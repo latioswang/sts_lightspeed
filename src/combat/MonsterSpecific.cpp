@@ -3363,7 +3363,11 @@ void Monster::largeSlimeSplit(BattleContext &bc, const MonsterId mediumSlimeType
     bc.monsters.monstersAlive++;
     bc.monsters.monsterCount = std::min(bc.monsters.monsterCount+1, 4);
 
-    bc.noOpRollMove(); // the dead large slime still rolls a move, once
+    // SpikeSlime_L's split ends with a RollMoveAction, so the dead slime consumes one more AI roll. AcidSlime_L's sets
+    // its move directly instead.
+    if (mediumSlimeType == MonsterId::SPIKE_SLIME_M) {
+        bc.noOpRollMove();
+    }
     bc.monsterTurnIdx++;
 }
 
