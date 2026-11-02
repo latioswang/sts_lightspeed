@@ -3363,8 +3363,7 @@ void Monster::largeSlimeSplit(BattleContext &bc, const MonsterId mediumSlimeType
     bc.monsters.monstersAlive++;
     bc.monsters.monsterCount = std::min(bc.monsters.monsterCount+1, 4);
 
-    bc.noOpRollMove();
-    bc.monsters.extraRollMoveOnTurn.set(idx2, true);
+    bc.noOpRollMove(); // the dead large slime still rolls a move, once
     bc.monsterTurnIdx++;
 }
 
