@@ -17,7 +17,7 @@ namespace sts {
 
         Card() = default;
         Card(CardId id) : id(id) {}
-        Card(CardId id, int upgraded) : id(id), upgraded(upgraded) {}
+        Card(CardId id, int upgraded) : id(id), misc(id == CardId::SEARING_BLOW ? upgraded : 0), upgraded(upgraded) {}
 
         [[nodiscard]] CardId getId() const;
         [[nodiscard]] int getUpgraded() const;
