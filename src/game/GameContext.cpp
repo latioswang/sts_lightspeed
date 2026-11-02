@@ -1328,6 +1328,10 @@ bool GameContext::obtainRelic(RelicId r) {
             break;
         }
 
+        case RelicId::LIZARD_TAIL:
+            relicData = 1; // ready to revive; the battle code clears it once used
+            break;
+
         case RelicId::OLD_COIN:
             obtainGold(300);
             break;
@@ -2139,7 +2143,7 @@ void GameContext::playerOnDie() {
     if (it != potions.end()) {
         *it = Potion::EMPTY_POTION_SLOT;
         --potionCount;
-        curHp = std::max(1, static_cast<int>(hasBark ? 0.6f : 0.3f * static_cast<float>(maxHp)));
+        curHp = std::max(1, static_cast<int>((hasBark ? 0.6f : 0.3f) * static_cast<float>(maxHp)));
         return;
     }
 
