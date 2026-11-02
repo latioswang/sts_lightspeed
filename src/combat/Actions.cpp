@@ -517,6 +517,9 @@ Action Actions::SummonGremlins() {
         gremlin0.buff<MS::MINION>();
         gremlin1.buff<MS::MINION>();
 
+        gremlin0.preBattleAction(bc);
+        gremlin1.preBattleAction(bc);
+
         gremlin0.rollMove(bc);
         gremlin1.rollMove(bc);
     }};
