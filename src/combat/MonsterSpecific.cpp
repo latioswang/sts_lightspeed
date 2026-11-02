@@ -1259,7 +1259,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
         }
 
         case MMID::THE_CHAMP_GLOAT: {
-            const int strAmts[3] {3, 4, 5};
+            const int strAmts[3] {2, 3, 4};
             buff<MS::STRENGTH>(strAmts[bossDiffIdx]);
             rollMove(bc);
             break;
