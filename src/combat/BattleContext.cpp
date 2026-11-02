@@ -419,7 +419,7 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::RED_MASK:
-                addToBot( Actions::DebuffAllEnemy<MS::WEAK>(1) );
+                addToBot( Actions::DebuffAllEnemy<MS::WEAK>(1, false) );
                 break;
 
             case R::RING_OF_THE_SNAKE:
@@ -2889,8 +2889,9 @@ void BattleContext::mummifiedHandOnUsePower() {
     }
 
     for (int i = matchingIdxList.size()-1; i >= 0; --i) {
+        // The game's queue still holds the card being played at this point, so that card is left out too.
         const auto uniqueId = cards.hand[matchingIdxList[i]].getUniqueId();
-        if (cardQueue.containsCardWithId(uniqueId)) {
+        if (cardQueue.containsCardWithId(uniqueId) || uniqueId == curCardQueueItem.card.getUniqueId()) {
             matchingIdxList.remove(i);
         }
     }
