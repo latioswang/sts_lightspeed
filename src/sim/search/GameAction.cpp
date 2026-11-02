@@ -65,6 +65,9 @@ std::vector<search::GameAction> getMatchAndKeepActions(const GameContext &gc) {
     }
     std::vector<int> order = unseen;
     order.insert(order.end(), seen.begin(), seen.end());
+    if (order.size() < 2) {
+        return {}; // a state rebuilt from the game's JSON has no cards: they are face down
+    }
     return {search::GameAction(order[0], order[1])};
 }
 
