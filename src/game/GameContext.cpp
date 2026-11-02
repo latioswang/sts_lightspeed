@@ -334,9 +334,13 @@ bool GameContext::relicCanSpawn(RelicId relic, bool shopRoom) const {
         case RelicId::SHOVEL:
             return floorNum < 48 && hasLessThanTwoCampfireRelics();
 
+        case RelicId::ECTOPLASM:
+            return act <= 1;
+
         case RelicId::MAW_BANK:
         case RelicId::OLD_COIN:
         case RelicId::SMILING_MASK:
+        case RelicId::THE_COURIER:
             return floorNum <= 48 && !shopRoom;
 
         case RelicId::ANCIENT_TEA_SET:
@@ -354,7 +358,6 @@ bool GameContext::relicCanSpawn(RelicId relic, bool shopRoom) const {
         case RelicId::QUESTION_CARD:
         case RelicId::REGAL_PILLOW:
         case RelicId::SINGING_BOWL:
-        case RelicId::THE_COURIER:
         case RelicId::TOXIC_EGG:
             return floorNum <= 48;
 
