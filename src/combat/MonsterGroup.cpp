@@ -604,7 +604,7 @@ void MonsterGroup::applyEmeraldEliteBuff(BattleContext &bc, const int buffType, 
 
         switch (buffType) {
             case 0:
-                m.buff<MS::STRENGTH>(act);
+                m.buff<MS::STRENGTH>(act + 1);
                 break;
 
             case 1: {
