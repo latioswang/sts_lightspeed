@@ -465,7 +465,7 @@ Action Actions::GainBlockRandomEnemy(int sourceMonster, int amount) {
 
         for (int i = 0; i < bc.monsters.monsterCount; ++i) {
             const auto &m = bc.monsters.arr[i];
-            if (i != sourceMonster && !m.isDying()) {
+            if (i != sourceMonster && !m.isDying() && m.moveHistory[0] != MMID::GENERIC_ESCAPE_MOVE) {
                 validIdxs[validCount++] = i;
             }
         }

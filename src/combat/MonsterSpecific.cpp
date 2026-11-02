@@ -559,14 +559,10 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             bc.addToBot( Actions::RollMove(idx) );
             break;
 
-        case MMID::CENTURION_DEFEND: {
-            if (bc.monsters.getAliveCount() > 1) {
-                auto &mystic = bc.monsters.arr[1];
-                mystic.addBlock(asc17 ? 20 : 15);
-            }
-            rollMove(bc);
+        case MMID::CENTURION_DEFEND:
+            bc.addToBot( Actions::GainBlockRandomEnemy(idx, asc17 ? 20 : 15) );
+            bc.addToBot( Actions::RollMove(idx) );
             break;
-        }
 
         case MMID::CENTURION_FURY:
             attackPlayerHelper(bc, asc2 ? 7 : 6, 3);
@@ -659,8 +655,6 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             attackPlayerHelper(bc, asc2 ? 5 : 4);
             if (doesEscapeNext()) {
                 setMove(MMID::GENERIC_ESCAPE_MOVE);
-            } else {
-                bc.addToBot(Actions::NoOpRollMove());
             }
             break;
         }
@@ -793,7 +787,6 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
         case MMID::HEXAGHOST_ACTIVATE: {// 5
             miscInfo = bc.player.curHp / 12 + 1; // set divider damage
             setMove(MMID::HEXAGHOST_DIVIDER);
-            bc.noOpRollMove();
             break;
         }
 
@@ -1504,7 +1497,6 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             if (getStatus<MS::FADING>() == 1) {
                 bc.addToBot( Actions::SuicideAction(idx, false) );
             }
-            bc.noOpRollMove();
             decrementStatus<MS::FADING>();
             break;
         }
@@ -1652,18 +1644,21 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
         case MMID::DONU_BEAM:
             attackPlayerHelper(bc, asc4 ? 12 : 10, 2);
             setMove(MonsterMoveId::DONU_CIRCLE_OF_POWER);
+            bc.noOpRollMove();
             break;
 
         case MMID::DONU_CIRCLE_OF_POWER:
             bc.monsters.arr[0].buff<MS::STRENGTH>(3); // shouldn't matter if deca is dead
             buff<MS::STRENGTH>(3);
             setMove(MonsterMoveId::DONU_BEAM);
+            bc.noOpRollMove();
             break;
 
         case MMID::DECA_BEAM:
             attackPlayerHelper(bc, asc4 ? 12 : 10, 2);
             bc.addToBot( Actions::MakeTempCardInDiscard(CardId::DAZED, 2) );
             setMove(MonsterMoveId::DECA_SQUARE_OF_PROTECTION);
+            bc.noOpRollMove();
             break;
 
         case MMID::DECA_SQUARE_OF_PROTECTION: {
@@ -1676,6 +1671,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
                 donu.buff<MS::PLATED_ARMOR>(3);
             }
             setMove(MonsterMoveId::DECA_BEAM);
+            bc.noOpRollMove();
             break;
         }
 
@@ -3149,10 +3145,8 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
 
                 if (!lastMove(MMID::WRITHING_MASS_FLAIL)) {
                     return MMID::WRITHING_MASS_FLAIL;
-
-                } else {
-                    return (MMID::WRITHING_MASS_WITHER);
                 }
+                myRoll = bc.aiRng.random(0, 69);
             }
         }
 
