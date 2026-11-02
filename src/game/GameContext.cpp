@@ -2210,6 +2210,15 @@ void GameContext::drinkPotion(Potion p) {
 #endif
             break;
     }
+    if (hasRelic(RelicId::TOY_ORNITHOPTER)) {  // FIX: relic had no implementation
+        playerHeal(5);
+    }
+}
+
+void GameContext::afterEscape() {
+    // Smoke Bomb: the fight ends with no rewards; go straight back to the map
+    regainControlAction = returnToMapAction;
+    regainControl();
 }
 
 void GameContext::drinkPotionAtIdx(int idx) {
@@ -2551,9 +2560,32 @@ void GameContext::chooseEventOption(int idx) {
             break;
         }
 
-        case Event::COLOSSEUM: // todo
-            regainControl();
+        case Event::COLOSSEUM: {  // FIX: was a stub
+            if (info.eventData == 0) {
+                // forced fight vs the slavers; afterwards return to this event for the second choice
+                regainControlAction = [](GameContext &gc) {
+                    gc.info.eventData = 1;
+                    gc.screenState = ScreenState::EVENT_SCREEN;
+                    gc.regainControlAction = returnToMapAction;
+                };
+                enterBattle(MonsterEncounter::COLOSSEUM_EVENT_SLAVERS);
+            } else if (idx == 0) {
+                regainControl();  // cowardice: leave
+            } else {
+                regainControlAction = [](GameContext &gc) {  // victory: Taskmaster + Nob for the big reward
+                    Rewards reward;
+                    reward.addGold(100);
+                    reward.addRelic(gc.returnRandomScreenlessRelic(RelicTier::RARE));
+                    reward.addRelic(gc.returnRandomScreenlessRelic(RelicTier::UNCOMMON));
+                    gc.addPotionRewards(reward);
+                    reward.addCardReward(gc.createCardReward(Room::EVENT));
+                    gc.openCombatRewardScreen(reward);
+                    gc.regainControlAction = returnToMapAction;
+                };
+                enterBattle(MonsterEncounter::COLOSSEUM_EVENT_NOBS);
+            }
             break;
+        }
 
         case Event::CURSED_TOME: {
             int &phase = info.eventData;
@@ -2662,6 +2694,7 @@ void GameContext::chooseEventOption(int idx) {
                     break;
 
                 case 1:
+                    loseGold(unfavorable ? 50 : 40);  // FIX: "Adjustments" costs the same as option 0
                     deck.upgradeRandomCards(miscRng, 2);
                     regainControl();
                     break;
@@ -2675,6 +2708,7 @@ void GameContext::chooseEventOption(int idx) {
                     loseGold(unfavorable ? 75 : 60);
                     deck.transformRandomCards(miscRng, 2); // TODO
                     regainControl();
+                    break;  // FIX: fell through into case 4
 
                 case 4:
                     loseGold(unfavorable ? 110 : 90);
@@ -2683,6 +2717,7 @@ void GameContext::chooseEventOption(int idx) {
                         returnToMapAction(gc);
                     };
                     openCardSelectScreen(CardSelectScreenType::REMOVE, 1);
+                    break;  // FIX: fell through into case 5
 
                 case 5:
                     playerLoseHp(unfavorable ? 5 : 3);
@@ -3081,7 +3116,9 @@ void GameContext::chooseEventOption(int idx) {
                 enterBattle(MonsterEncounter::MUSHROOMS_EVENT);
 
             } else if (idx == 1) {
-                obtainGold(unfavorable ? 50 : 99);
+                // FIX: real game heals 25% max HP and adds Parasite (was +99 gold)
+                playerHeal(fractionMaxHp(0.25f));
+                deck.obtain(*this, CardId::PARASITE);
                 regainControl();
 
             } else {
@@ -3102,8 +3139,7 @@ void GameContext::chooseEventOption(int idx) {
                 enterBattle(MonsterEncounter::MYSTERIOUS_SPHERE_EVENT);
 
             } else if (idx == 1) {
-                obtainGold(unfavorable ? 50 : 99);
-                regainControl();
+                regainControl();  // FIX: leaving gives nothing (was +99 gold)
 
             } else {
                 assert(false);
@@ -3178,7 +3214,7 @@ void GameContext::chooseEventOption(int idx) {
 
         case Event::SCRAP_OOZE:
             if (idx == 0) {
-                damagePlayer(unfavorable ? 5 : 3);
+                damagePlayer((unfavorable ? 5 : 3) + info.eventData);  // FIX: +1 per failed reach
                 const int roll = miscRng.random(99);
                 const int relicChance = info.eventData*10 + 25;
                 if (roll >= 99 - relicChance) {
@@ -3325,6 +3361,7 @@ void GameContext::chooseEventOption(int idx) {
 
         case Event::THE_MAUSOLEUM: {
             if (idx == 0) {
+                obtainRelic(returnRandomScreenlessRelic(returnRandomRelicTier(relicRng, act)));  // FIX: relic was missing
                 auto result = miscRng.randomBoolean();
                 if (result || unfavorable) {
                     deck.obtain(*this, CardId::WRITHE);
@@ -3375,17 +3412,20 @@ void GameContext::chooseEventOption(int idx) {
             Potion pArr[3];
             switch (idx) {
                 case 0: {
+                    loseGold(20);  // FIX: potions were free
                     pArr[0] = getRandomPotion(potionRng, cc);
                     openCombatRewardScreen(Rewards(pArr, 1));
                     break;
                 }
                 case 1: {
+                    loseGold(30);  // FIX
                     pArr[0] = getRandomPotion(potionRng, cc);
                     pArr[1] = getRandomPotion(potionRng, cc);
                     openCombatRewardScreen(Rewards(pArr, 2));
                     break;
                 }
                 case 2: {
+                    loseGold(40);  // FIX
                     pArr[0] = getRandomPotion(potionRng, cc);
                     pArr[1] = getRandomPotion(potionRng, cc);
                     pArr[2] = getRandomPotion(potionRng, cc);

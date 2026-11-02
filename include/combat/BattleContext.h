@@ -135,6 +135,8 @@ namespace sts {
         void setState(InputState state);
         void addToTop(const Action &a);
         void addToBot(const Action &a);
+        void addToTop(Action &&a);  // PERF: temporaries are moved into the queue instead of copied (same behaviour)
+        void addToBot(Action &&a);
 
         void addToTopCard(CardQueueItem item);
         void addToBotCard(CardQueueItem item);

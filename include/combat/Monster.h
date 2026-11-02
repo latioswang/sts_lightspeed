@@ -46,6 +46,7 @@ namespace sts {
         bool halfDead = false;
         bool escapeNext = false;
         MMID moveHistory[2] = {MMID::INVALID, MMID::INVALID };
+        bool lastMoveWasRolled = false;  // true if moveHistory[0] came from rollMove (RNG), false if scripted via setMove
 
         std::uint64_t statusBits = 0;
         std::int8_t artifact = 0;

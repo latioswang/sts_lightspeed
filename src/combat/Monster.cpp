@@ -633,11 +633,13 @@ void Monster::rollMove(BattleContext &bc) {
 
     miscInfo = miscInfoCopy;
     setMove(move);
+    lastMoveWasRolled = true;
 }
 
 void Monster::setMove(MMID moveId) {
     moveHistory[1] = moveHistory[0];
     moveHistory[0] = moveId;
+    lastMoveWasRolled = false;
 }
 
 namespace sts {

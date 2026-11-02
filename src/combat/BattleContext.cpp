@@ -50,6 +50,7 @@ void BattleContext::init(const GameContext &gc, MonsterEncounter encounterToInit
     potionCapacity = gc.potionCapacity;
     potions = gc.potions;
 
+    player.cc = gc.cc;  // FIX: was never initialised -> Entropic Brew / Dead Branch used a garbage class pool
     player.curHp = gc.curHp;
     player.maxHp = gc.maxHp;
     player.gold = gc.gold;
@@ -294,6 +295,8 @@ void BattleContext::initRelics(const GameContext &gc) {
                 if (r.data > 0) {
                     for (int i = 0; i < monsters.monsterCount; ++i) {
                         Monster &m = monsters.arr[i];
+                        if (m.idx == -1) continue;  // FIX: reserved (not yet spawned) slots are not monsters; giving them
+                                                    // 1 HP made them targetable and "killable" (monstersAlive went negative)
                         m.curHp = 1;
                     }
                 }
@@ -509,6 +512,8 @@ void BattleContext::exitBattle(GameContext &g) const {
 
     if (outcome == Outcome::PLAYER_LOSS) {
         g.outcome = GameOutcome::PLAYER_LOSS;
+    } else if (miscBits.test(1)) {
+        g.afterEscape();  // Smoke Bomb: straight back to the map, no rewards
     } else {
         // player victory
         g.regainControl();
@@ -654,6 +659,14 @@ void BattleContext::addToTop(const Action &a) {
 
 void BattleContext::addToBot(const Action &a) {
     actionQueue.pushBack(a);
+}
+
+void BattleContext::addToTop(Action &&a) {  // PERF: move overload, no std::function copy
+    actionQueue.pushFront(std::move(a));
+}
+
+void BattleContext::addToBot(Action &&a) {  // PERF: move overload, no std::function copy
+    actionQueue.pushBack(std::move(a));
 }
 
 // todo remove or replace other method that does this
@@ -1073,7 +1086,7 @@ void BattleContext::useAttackCard() {
         }
 
         case CardId::IRON_WAVE: {
-            addToBot( Actions::GainBlock(calculateCardBlock(calculateCardBlock(up  ? 7 : 5))) );
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 7 : 5)) );  // FIX: block modifiers were applied twice
             addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 7 : 5)) );
             break;
         }
@@ -1263,8 +1276,8 @@ void BattleContext::useSkillCard() {
             break;
 
         case CardId::DARK_SHACKLES:
-            addToBot( Actions::DebuffEnemy<MS::STRENGTH>(t, up ? 15 : 9) );
-            if (monsters.arr[t].hasStatus<MS::ARTIFACT>()) {
+            addToBot( Actions::DebuffEnemy<MS::STRENGTH>(t, up ? -15 : -9, false) );  // FIX: sign was positive (gave strength)
+            if (!monsters.arr[t].hasStatus<MS::ARTIFACT>()) {  // FIX: condition was inverted (real game: GainStrengthPower only if no Artifact)
                 addToBot( Actions::BuffEnemy<MS::SHACKLED>(t, up ? 15 : 9) );
             }
             break;
@@ -1279,7 +1292,7 @@ void BattleContext::useSkillCard() {
             break;
 
         case CardId::DISARM:
-            addToBot( Actions::DebuffEnemy<MS::STRENGTH>(t, -2, false) );
+            addToBot( Actions::DebuffEnemy<MS::STRENGTH>(t, up ? -3 : -2, false) );  // FIX: upgrade value
             break;
 
         case CardId::DISCOVERY:
@@ -1342,7 +1355,7 @@ void BattleContext::useSkillCard() {
             bool hasAttack = false;
             for (int i = 0; i < cards.cardsInHand; ++i) {
                 if (cards.hand[i].getType() == CardType::ATTACK) {
-                    hasAttack = false;
+                    hasAttack = true;  // FIX: was `false` -> card always drew
                     break;
                 }
             }
@@ -2240,6 +2253,9 @@ void BattleContext::drinkPotion(int idx, int target) {
     const bool hasBark = player.hasRelic<R::SACRED_BARK>();
     const Potion p = potions[idx];
     discardPotion(idx);
+    if (player.hasRelic<R::TOY_ORNITHOPTER>()) {  // FIX: relic had no implementation
+        addToBot(Actions::HealPlayer(5));
+    }
 
     // todo - dont need to add to bot because always will have nothing in actionQueue?
 
@@ -2266,7 +2282,7 @@ void BattleContext::drinkPotion(int idx, int target) {
 
 
         case Potion::BLOOD_POTION: {
-            int healAmt = static_cast<int>((static_cast<float>(player.maxHp * (hasBark ? 20 : 40)) / 100.0f));
+            int healAmt = static_cast<int>((static_cast<float>(player.maxHp * (hasBark ? 40 : 20)) / 100.0f));  // FIX: was inverted
             addToBot(Actions::HealPlayer(healAmt));
             break;
         }
@@ -2396,7 +2412,13 @@ void BattleContext::drinkPotion(int idx, int target) {
             break;
 
         case Potion::SMOKE_BOMB:
-            // todo
+            // FIX (was a no-op): escape the fight (not usable against bosses), forfeiting rewards
+            if (!isBossEncounter(encounter)) {
+                miscBits.set(1);  // escaped flag, read by exitBattle
+                cardQueue.clear();
+                actionQueue.clear();
+                outcome = Outcome::PLAYER_VICTORY;
+            }
             break;
 
         case Potion::SNECKO_OIL:

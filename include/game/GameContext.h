@@ -149,7 +149,7 @@ namespace sts {
 
         sts::Card noteForYourselfCard = Card(CardId::IRON_WAVE);
 
-        static constexpr bool disableColosseum = true;
+        static constexpr bool disableColosseum = false;  // FIX: event is now implemented
         static constexpr bool disableMatchAndKeep = true;
         static constexpr bool disablePrismaticShard = true;
         bool skipBattles = false;
@@ -344,6 +344,7 @@ namespace sts {
         void chooseTreasureRoomOption(bool openChest);
 
         void regainControl();
+        void afterEscape();  // Smoke Bomb escape: no rewards
     };
 
 

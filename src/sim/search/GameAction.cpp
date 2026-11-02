@@ -413,7 +413,12 @@ void executeShopAction(GameContext &gc, const search::GameAction a) {
     }
 }
 
+std::function<void(const GameContext &, const search::GameAction &)> search::gameActionObserver;
+
 void search::GameAction::execute(GameContext &gc) const {
+    if (gameActionObserver) {
+        gameActionObserver(gc, *this);
+    }
 #ifdef sts_asserts
     if (!isValidAction(gc)) {
         std::cerr << "invalid game action taken: " << bits
@@ -704,8 +709,10 @@ int search::GameAction::getValidEventSelectBits(const GameContext &gc) {
 
         case Event::NEOW:
         case Event::KNOWING_SKULL:
-        case Event::THE_WOMAN_IN_BLUE:
             return 0xF;
+
+        case Event::THE_WOMAN_IN_BLUE:  // FIX: options now cost 20/30/40 gold; leave always allowed
+            return 0x8 | (gc.gold >= 20 ? 0x1 : 0) | (gc.gold >= 30 ? 0x2 : 0) | (gc.gold >= 40 ? 0x4 : 0);
 
         case Event::PLEADING_VAGRANT:
             if (gc.gold >= 85) {
