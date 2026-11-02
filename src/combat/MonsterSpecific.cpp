@@ -2178,10 +2178,15 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
             // 2 heal
             // 3 buff
 
-            const auto healNeedAmt = asc17 ? 21 : 16;
-            const auto &knight = bc.monsters.arr[0];
+            int missingHp = 0;
+            for (int i = 0; i < bc.monsters.monsterCount; ++i) {
+                const auto &m = bc.monsters.arr[i];
+                if (!m.isDeadOrEscaped()) {
+                    missingHp += m.maxHp - m.curHp;
+                }
+            }
 
-            if (maxHp-curHp >= healNeedAmt || knight.isAlive() && knight.maxHp-knight.curHp >= healNeedAmt) {
+            if (missingHp > (asc17 ? 20 : 15) && !lastTwoMoves(MMID::MYSTIC_HEAL)) {
                 return (MMID::MYSTIC_HEAL);
                 break;
             }
