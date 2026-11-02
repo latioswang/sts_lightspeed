@@ -30,19 +30,19 @@ void Shop::setupCards(GameContext &gc) {
     CardRarity rarities[5];
 
     rarities[0] = rollCardRarityShop(gc.cardRng, gc.cardRarityFactor);
-    cards[0] = getRandomClassCardOfTypeAndRarity(gc.cardRng, gc.cc, CardType::ATTACK, rarities[0]);
+    cards[0] = gc.previewObtainCard(getRandomClassCardOfTypeAndRarity(gc.cardRng, gc.cc, CardType::ATTACK, rarities[0]));
     assignRandomCardExcluding(gc, CardType::ATTACK, cards[0].id, cards[1], rarities[1]);
 
     rarities[2] = rollCardRarityShop(gc.cardRng, gc.cardRarityFactor);
-    cards[2] = getRandomClassCardOfTypeAndRarity(gc.cardRng, gc.cc, CardType::SKILL, rarities[2]);
+    cards[2] = gc.previewObtainCard(getRandomClassCardOfTypeAndRarity(gc.cardRng, gc.cc, CardType::SKILL, rarities[2]));
     assignRandomCardExcluding(gc, CardType::SKILL, cards[2].id, cards[3], rarities[3]);
 
     rarities[4] = rollCardRarityShop(gc.cardRng, gc.cardRarityFactor);
     rarities[4] = rarities[4] == CardRarity::COMMON ? CardRarity::UNCOMMON : rarities[4];
-    cards[4] = getRandomClassCardOfTypeAndRarity(gc.cardRng, gc.cc, CardType::POWER, rarities[4]);
+    cards[4] = gc.previewObtainCard(getRandomClassCardOfTypeAndRarity(gc.cardRng, gc.cc, CardType::POWER, rarities[4]));
 
-    cards[5] = getColorlessCardFromPool(gc.cardRng, CardRarity::UNCOMMON);
-    cards[6] = getColorlessCardFromPool(gc.cardRng, CardRarity::RARE);
+    cards[5] = gc.previewObtainCard(getColorlessCardFromPool(gc.cardRng, CardRarity::UNCOMMON));
+    cards[6] = gc.previewObtainCard(getColorlessCardFromPool(gc.cardRng, CardRarity::RARE));
 
     for (int i = 0; i < 5; ++i) {
 
