@@ -344,6 +344,10 @@ void Monster::attackedUnblockedHelper(BattleContext &bc, int damage) { // todo, 
         damage = 5;
     }
 
+    if (hasStatus<MS::ANGRY>()) { // AngryPower.onAttacked needs damage past block
+        buff<MS::STRENGTH>(getStatus<MS::ANGRY>());
+    }
+
     if (bc.player.hasStatus<PS::ENVENOM>()) {
         bc.addToTop( Actions::DebuffEnemy<MS::POISON>(this->idx, bc.player.getStatus<PS::ENVENOM>()) );
     }
@@ -387,9 +391,6 @@ void Monster::attackedUnblockedHelper(BattleContext &bc, int damage) { // todo, 
             }
         }
 
-    } else if (hasStatus<MS::THORNS>()) {
-        bc.addToTop( Actions::DamagePlayer(getStatus<MS::THORNS>()) );
-
     } else if (hasStatus<MS::ASLEEP>()) {
         // lagavulin
         setHasStatus<MS::ASLEEP>(false);
@@ -426,8 +427,9 @@ void Monster::attacked(BattleContext &bc, int damage) {
         }
     }
 
-    if (hasStatus<MS::ANGRY>()) { // onAttacked
-        buff<MS::STRENGTH>(getStatus<MS::ANGRY>());
+    // ThornsPower.onAttacked has no damage check: blocked hits and 0-damage attacks trigger it too.
+    if (hasStatus<MS::THORNS>()) {
+        bc.addToTop( Actions::DamagePlayer(getStatus<MS::THORNS>()) );
     }
 
     const bool hadBlock = block > 0;
