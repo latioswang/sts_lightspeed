@@ -1477,7 +1477,7 @@ RelicId GameContext::returnRandomRelic(RelicTier tier, bool shopRoom, bool fromF
 
         case RelicTier::COMMON:
             if (commonRelicPool.empty()) {
-                retVal = returnRandomRelic(RelicTier::UNCOMMON, shopRoom);
+                return returnRandomRelic(RelicTier::UNCOMMON, shopRoom);
             } else {
                 vec = &commonRelicPool;
             }
@@ -1485,7 +1485,7 @@ RelicId GameContext::returnRandomRelic(RelicTier tier, bool shopRoom, bool fromF
 
         case RelicTier::UNCOMMON:
             if (uncommonRelicPool.empty()) {
-                retVal = returnRandomRelic(RelicTier::RARE, shopRoom);
+                return returnRandomRelic(RelicTier::RARE, shopRoom);
             } else {
                 vec = &uncommonRelicPool;
             }
@@ -1493,7 +1493,7 @@ RelicId GameContext::returnRandomRelic(RelicTier tier, bool shopRoom, bool fromF
 
         case RelicTier::RARE:
             if (rareRelicPool.empty()) {
-                retVal = RelicId::CIRCLET;
+                return RelicId::CIRCLET;
             } else {
                 vec = &rareRelicPool;
             }
@@ -1501,7 +1501,7 @@ RelicId GameContext::returnRandomRelic(RelicTier tier, bool shopRoom, bool fromF
 
         case RelicTier::SHOP:
             if (shopRelicPool.empty()) {
-                retVal = returnRandomRelic(RelicTier::UNCOMMON, shopRoom);
+                return returnRandomRelic(RelicTier::UNCOMMON, shopRoom);
             } else {
                 vec = &shopRelicPool;
             }
@@ -1509,7 +1509,7 @@ RelicId GameContext::returnRandomRelic(RelicTier tier, bool shopRoom, bool fromF
 
         case RelicTier::BOSS:
             if (bossRelicPool.empty()) {
-                retVal = RelicId::RED_CIRCLET;
+                return RelicId::RED_CIRCLET;
             } else {
                 vec = &bossRelicPool;
             }
@@ -1519,7 +1519,8 @@ RelicId GameContext::returnRandomRelic(RelicTier tier, bool shopRoom, bool fromF
             break;
     };
 
-    if (fromFront) {
+    // returnEndRandomRelicKey takes from the end of every pool except the boss pool, which it still takes from the front.
+    if (fromFront || tier == RelicTier::BOSS) {
         retVal = vec->front();
         vec->erase(vec->begin());
     } else {
