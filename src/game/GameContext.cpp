@@ -1343,6 +1343,29 @@ bool GameContext::obtainRelic(RelicId r) {
             break;
         }
 
+        case RelicId::ORRERY: {
+            Rewards reward;
+            for (int i = 0; i < 5; ++i) {
+                reward.addCardReward(createCardReward(curRoom));
+            }
+            openCombatRewardScreen(reward);
+            opensScreen = true;
+            break;
+        }
+
+        case RelicId::OLD_COIN:
+            obtainGold(300);
+            break;
+
+        case RelicId::DOLLYS_MIRROR:
+            openCardSelectScreen(CardSelectScreenType::DUPLICATE, 1);
+            opensScreen = true;
+            break;
+
+        case RelicId::NECRONOMICON:
+            deck.obtain(*this, CardId::NECRONOMICURSE);
+            break;
+
         case RelicId::CALLING_BELL: {
             deck.obtain(*this, CardId::CURSE_OF_THE_BELL);
             Rewards reward;
