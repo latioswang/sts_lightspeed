@@ -1917,11 +1917,14 @@ void GameContext::openTreasureRoomChest() {
 
 Rewards GameContext::createCombatReward() {
     Rewards reward;
-    int goldAmt = treasureRng.random(10, 20);
-    if (hasRelic(RelicId::GOLDEN_IDOL)) {
-        goldAmt += std::round(static_cast<float>(goldAmt) * 0.25f);
+    // AbstractRoom.update: no gold, and no treasureRng roll, if a monster escaped.
+    if (!info.monsterEscaped) {
+        int goldAmt = treasureRng.random(10, 20);
+        if (hasRelic(RelicId::GOLDEN_IDOL)) {
+            goldAmt += std::round(static_cast<float>(goldAmt) * 0.25f);
+        }
+        reward.addGold(goldAmt);
     }
-    reward.addGold(goldAmt);
     addPotionRewards(reward);
     reward.addCardReward(createCardReward(Room::MONSTER)); // TODO Prayer wheel
     if (hasRelic(RelicId::PRAYER_WHEEL)) {
