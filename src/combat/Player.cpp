@@ -159,7 +159,7 @@ void Player::heal(int amount) {
     }
 
     if (hasRelic<RelicId::MAGIC_FLOWER>()) {
-        amount = amount * 3 / 2;
+        amount = (amount * 3 + 1) / 2;  // MathUtils.round(amount * 1.5f)
     }
 
     bool wasBloodied = curHp <= maxHp/2;

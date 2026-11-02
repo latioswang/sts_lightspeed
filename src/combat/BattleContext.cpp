@@ -531,6 +531,8 @@ void BattleContext::exitBattle(GameContext &g) const {
 }
 
 void BattleContext::updateRelicsOnExit(GameContext &g) const {
+    // Victory relics heal while the room's phase is still COMBAT, so Magic Flower counts.
+    const auto victoryHeal = [&g](int amount) { return g.hasRelic(RelicId::MAGIC_FLOWER) ? (amount * 3 + 1) / 2 : amount; };
     for (auto &r : g.relics.relics) {
         switch (r.id) {
             case RelicId::HAPPY_FLOWER:
@@ -580,19 +582,19 @@ void BattleContext::updateRelicsOnExit(GameContext &g) const {
 
             case RelicId::BURNING_BLOOD:
                 if (outcome == Outcome::PLAYER_VICTORY) {
-                    g.playerHeal(6);
+                    g.playerHeal(victoryHeal(6));
                 }
                 break;
 
             case RelicId::BLACK_BLOOD:
                 if (outcome == Outcome::PLAYER_VICTORY) {
-                    g.playerHeal(12);
+                    g.playerHeal(victoryHeal(12));
                 }
                 break;
 
             case RelicId::MEAT_ON_THE_BONE:
                 if (outcome == Outcome::PLAYER_VICTORY && g.curHp <= g.maxHp / 2) {
-                    g.playerHeal(12);
+                    g.playerHeal(victoryHeal(12));
                 }
                 break;
 
