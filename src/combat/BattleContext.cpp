@@ -87,6 +87,9 @@ void BattleContext::initRelics(const GameContext &gc) {
     fixed_list<RelicId, 2> atTurnStartPostDraw;
 
     auto room = gc.curRoom;
+    // The relics below check the room's eliteTrigger. Dead Adventurer's fight and Colosseum's second fight set it too.
+    const bool eliteTrigger = room == Room::ELITE
+            || (room == Room::EVENT && (gc.curEvent == Event::DEAD_ADVENTURER || encounter == MonsterEncounter::COLOSSEUM_EVENT_NOBS));
 
     auto &p = player;
 
@@ -317,7 +320,7 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::PRESERVED_INSECT:
-                if (room == Room::ELITE) {
+                if (eliteTrigger) {
                     for (int i = 0; i < monsters.monsterCount; ++i) {
                         Monster &m = monsters.arr[i];
                         m.curHp = static_cast<int>(m.maxHp * .75);
@@ -335,13 +338,13 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::SLAVERS_COLLAR:
-                if (room == Room::ELITE || room == Room::BOSS) { // todo this needs to be set by eliteTrigger maybe?
+                if (eliteTrigger || room == Room::BOSS) {
                     p.energyPerTurn++;
                 }
                 break;
 
             case R::SLING_OF_COURAGE:
-                if (room == Room::ELITE) {
+                if (eliteTrigger) {
                     p.buff<PS::STRENGTH>(2);
                 }
                 break;
