@@ -3513,9 +3513,14 @@ void Monster::returnStasisCard(BattleContext &bc) {
     assert(stasisCard.id != CardId::INVALID);
 #endif
 
-    bc.cards.notifyAddCardToCombat(stasisCard);
-    bc.moveToHandHelper(stasisCard);
+    // StasisPower.onDeath queues this, so the card lands behind anything already queued, such as the next turn's draw.
+    const CardInstance returned = stasisCard;
     stasisCard = {CardId::INVALID};
+    bc.addToBot({[=](BattleContext &b) {
+        CardInstance card = returned;
+        b.cards.notifyAddCardToCombat(card);
+        b.moveToHandHelper(card);
+    }});
 }
 
 void reptoSummonHelper(const BattleContext &bc, int daggerIdxs[2], int daggerCount) {
