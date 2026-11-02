@@ -210,6 +210,12 @@ Action Actions::ShuffleTempCardIntoDrawPile(CardId id, int count) {
     }};
 }
 
+Action Actions::SetMonsterMove(int monsterIdx, MonsterMoveId move) {
+    return {[=](BattleContext &bc) {
+        bc.monsters.arr[monsterIdx].moveHistory[0] = move;
+    }};
+}
+
 Action Actions::PlayTopCardDelayed() {
     return {[](BattleContext &bc) {
         bc.addToBot( Actions::PlayTopCard(bc.monsters.getRandomMonsterIdx(bc.cardRandomRng), false) );

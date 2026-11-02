@@ -504,21 +504,26 @@ void Monster::damage(BattleContext &bc, int damage) {
 void Monster::onHpLost(BattleContext &bc, int amount) {
     const bool atOrBelowHalf = curHp <= maxHp/2;
     switch (id) {
+        // Each slime's damage() sets the split at once and also queues a SetMoveAction, so a RollMoveAction already in
+        // the queue (a slime hit by Thorns during its own turn) can't replace it.
         case MonsterId::ACID_SLIME_L:
-            if (atOrBelowHalf) {
+            if (atOrBelowHalf && moveHistory[0] != MMID::ACID_SLIME_L_SPLIT) {
                 moveHistory[0] = MMID::ACID_SLIME_L_SPLIT;
+                bc.addToBot(Actions::SetMonsterMove(idx, MMID::ACID_SLIME_L_SPLIT));
             }
             break;
 
         case MonsterId::SLIME_BOSS:
-            if (atOrBelowHalf) {
+            if (atOrBelowHalf && moveHistory[0] != MMID::SLIME_BOSS_SPLIT) {
                 moveHistory[0] = MMID::SLIME_BOSS_SPLIT;
+                bc.addToBot(Actions::SetMonsterMove(idx, MMID::SLIME_BOSS_SPLIT));
             }
             break;
 
         case MonsterId::SPIKE_SLIME_L:
-            if (atOrBelowHalf) {
+            if (atOrBelowHalf && moveHistory[0] != MMID::SPIKE_SLIME_L_SPLIT) {
                 moveHistory[0] = MMID::SPIKE_SLIME_L_SPLIT;
+                bc.addToBot(Actions::SetMonsterMove(idx, MMID::SPIKE_SLIME_L_SPLIT));
             }
             break;
 

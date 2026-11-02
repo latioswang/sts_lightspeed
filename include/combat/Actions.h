@@ -5,6 +5,7 @@
 #ifndef STS_LIGHTSPEED_ACTIONS_H
 #define STS_LIGHTSPEED_ACTIONS_H
 
+#include "constants/MonsterMoves.h"
 #include <utility>
 #include <functional>
 #include <cstdint>
@@ -87,6 +88,7 @@ namespace sts {
 
         static Action BurnIncrease();
         static Action PlayTopCardDelayed();
+        static Action SetMonsterMove(int monsterIdx, MonsterMoveId move);
         static Action PlayTopCard(int monsterTargetIdx, bool exhausts);
         static Action MakeTempCardInHand(CardId card, bool upgraded= false, int amount = 1);
         static Action MakeTempCardInHand(CardInstance c, int amount = 1);
