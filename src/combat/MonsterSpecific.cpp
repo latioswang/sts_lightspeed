@@ -1432,7 +1432,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
         // ************ DARKLING ************
 
         case MMID::DARKLING_CHOMP:
-            attackPlayerHelper(bc, asc2 ? 9 : 8);
+            attackPlayerHelper(bc, asc2 ? 9 : 8, 2);
             bc.addToBot( Actions::RollMove(idx) );
             break;
 
@@ -2371,7 +2371,10 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
                     }
 
                 } else if (lastMove(MMID::GREMLIN_LEADER_STAB)) {
-                    const auto roll2 = bc.aiRng.random(0, 80);
+                    auto roll2 = bc.aiRng.random(0, 80);
+                    while (roll2 == 80) {  // 80 lands back in this same branch of the game's getMove
+                        roll2 = bc.aiRng.random(0, 80);
+                    }
                     if (roll2 < 50) {
                         return (MMID::GREMLIN_LEADER_RALLY);
                     } else {
@@ -2671,17 +2674,17 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
                 break;
             }
 
-            int roll2 = 100;
+            int myRoll = roll;
 
             if (roll < 20) {
                 if (!lastMove(MMID::SHELLED_PARASITE_FELL)) {
                     return (MMID::SHELLED_PARASITE_FELL);
                     break;
                 }
-                roll2 = bc.aiRng.random(20,99);
+                myRoll = bc.aiRng.random(20,99);
             }
 
-            if (roll < 60 || roll2 < 60) {
+            if (myRoll < 60) {
                 if (!lastTwoMoves(MMID::SHELLED_PARASITE_DOUBLE_STRIKE)) {
                     return (MMID::SHELLED_PARASITE_DOUBLE_STRIKE);
                 } else {
