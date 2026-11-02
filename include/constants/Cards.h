@@ -489,6 +489,7 @@ namespace sts {
             case CardId::BOOT_SEQUENCE:
             case CardId::DRAMATIC_ENTRANCE:
             case CardId::MIND_BLAST:
+            case CardId::PRIDE:
             case CardId::WRITHE:
                 return true;
 
@@ -536,6 +537,7 @@ namespace sts {
             case CardId::WARCRY:
             case CardId::DISARM:
             case CardId::INFERNAL_BLADE:
+            case CardId::SEEING_RED:
             case CardId::INTIMIDATE:
             case CardId::PUMMEL:
             case CardId::SHOCKWAVE:
@@ -703,6 +705,8 @@ namespace sts {
     static constexpr int getEnergyCost(CardId id, bool upgraded) {
         switch (id) {
             case CardId::ANGER:
+            case CardId::RAGE:
+            case CardId::TRIP:
             case CardId::BACKSTAB:
             case CardId::BANDAGE_UP:
             case CardId::BATTLE_TRANCE:
@@ -752,7 +756,6 @@ namespace sts {
             case CardId::STRIKE_PURPLE:
             case CardId::STRIKE_RED:
             case CardId::SWORD_BOOMERANG:
-            case CardId::TRIP:
             case CardId::TRUE_GRIT:
             case CardId::WILD_STRIKE:
                 return 1;
@@ -801,6 +804,7 @@ namespace sts {
                 return upgraded ? 1 : 2;
 
             case CardId::HAVOC:
+            case CardId::INFERNAL_BLADE:
             case CardId::SEEING_RED:
             case CardId::BODY_SLAM:
             case CardId::EXHUME:
