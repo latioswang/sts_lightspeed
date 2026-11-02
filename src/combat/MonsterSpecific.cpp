@@ -1015,6 +1015,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
         // ************ RED SLAVER ************
 
         case MMID::RED_SLAVER_ENTANGLE:
+            miscInfo = true;  // used entangle
             bc.addToBot(Actions::DebuffPlayer<PS::ENTANGLED>(1));
             bc.addToBot(Actions::RollMove(idx));
             break;
@@ -2782,10 +2783,10 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
             } else if (roll >= 75 && !usedEntangle) {
                 return (MMID::RED_SLAVER_ENTANGLE);
 
-            } else if (roll >= 50 && usedEntangle && !lastTwoMoves(MMID::RED_SLAVER_STAB)) {
+            } else if (roll >= 55 && usedEntangle && !lastTwoMoves(MMID::RED_SLAVER_STAB)) {
                 return (MMID::RED_SLAVER_STAB);
 
-            } else if (!lastTwoMoves(MMID::RED_SLAVER_SCRAPE) || (asc17 && !lastMove(MMID::RED_SLAVER_SCRAPE))) {
+            } else if (asc17 ? !lastMove(MMID::RED_SLAVER_SCRAPE) : !lastTwoMoves(MMID::RED_SLAVER_SCRAPE)) {
                 return (MMID::RED_SLAVER_SCRAPE);
 
             } else {
