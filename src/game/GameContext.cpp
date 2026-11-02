@@ -2327,7 +2327,7 @@ void GameContext::chooseNeowOption(const Neow::Option &o) {
             break;
 
         case Neow::Bonus::TEN_PERCENT_HP_BONUS:
-            maxHp += static_cast<int>(static_cast<float>(maxHp) * 0.1f);
+            playerIncreaseMaxHp(static_cast<int>(static_cast<float>(maxHp) * 0.1f));
             regainControlAction(*this);
             break;
 
@@ -2374,7 +2374,7 @@ void GameContext::chooseNeowOption(const Neow::Option &o) {
             break;
 
         case Neow::Bonus::TWENTY_PERCENT_HP_BONUS:
-            maxHp += static_cast<int>(static_cast<float>(maxHp) * 0.2f);
+            playerIncreaseMaxHp(static_cast<int>(static_cast<float>(maxHp) * 0.2f));
             regainControlAction(*this);
             break;
 
