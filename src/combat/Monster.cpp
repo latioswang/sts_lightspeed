@@ -364,10 +364,12 @@ void Monster::attackedUnblockedHelper(BattleContext &bc, int damage) { // todo, 
 
     } else if (hasStatus<MS::FLIGHT>() && damage > 0) {
         auto flight = getStatus<MS::FLIGHT>();
-        if (flight == 1) {
+        if (flight == 1) { // the power is gone, so a grounded byrd takes full damage
             setMove(MMID::BYRD_STUNNED);
+            removeStatus<MS::FLIGHT>();
+        } else {
+            setStatus<MS::FLIGHT>(flight-1);
         }
-        setStatus<MS::FLIGHT>(flight-1);
 
     } else if (hasStatus<MS::MALLEABLE>() || hasStatus<MS::REACTIVE>()) {
         if (hasStatus<MS::MALLEABLE>()) {
