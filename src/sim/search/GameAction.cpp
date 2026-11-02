@@ -46,6 +46,28 @@ std::ostream &search::GameAction::printDesc(std::ostream &os, const GameContext 
     return os;
 }
 
+// One action: what a player can do without seeing the face-down cards. Take a pair already seen, else flip the next
+// two unseen cards. deckIdx is -1 for an unseen card, 1 for a seen one, 0 for a matched one.
+std::vector<search::GameAction> getMatchAndKeepActions(const GameContext &gc) {
+    const auto &cards = gc.info.toSelectCards;
+    std::vector<int> seen;
+    std::vector<int> unseen;
+    for (int i = 0; i < static_cast<int>(cards.size()); ++i) {
+        if (cards[i].deckIdx == 1) seen.push_back(i);
+        if (cards[i].deckIdx == -1) unseen.push_back(i);
+    }
+    for (int a = 0; a < static_cast<int>(seen.size()); ++a) {
+        for (int b = a + 1; b < static_cast<int>(seen.size()); ++b) {
+            if (cards[seen[a]].card.id == cards[seen[b]].card.id) {
+                return {search::GameAction(seen[a], seen[b])};
+            }
+        }
+    }
+    std::vector<int> order = unseen;
+    order.insert(order.end(), seen.begin(), seen.end());
+    return {search::GameAction(order[0], order[1])};
+}
+
 bool isValidMatchAndKeepEventAction(const GameContext &gc, const search::GameAction a) {
 //    const auto &m = matchAndKeepCardMap;
 //    const int idx1 = option / m.size();
@@ -437,7 +459,11 @@ void search::GameAction::execute(GameContext &gc) const {
 
     switch (gc.screenState) {
         case ScreenState::EVENT_SCREEN:
-            gc.chooseEventOption(getIdx1());
+            if (gc.curEvent == Event::MATCH_AND_KEEP) {
+                gc.chooseMatchAndKeepCards(getIdx1(), getIdx2());
+            } else {
+                gc.chooseEventOption(getIdx1());
+            }
             break;
 
         case ScreenState::REWARDS:
@@ -629,7 +655,7 @@ std::vector<search::GameAction> search::GameAction::getAllActionsInState(const s
 
         case ScreenState::EVENT_SCREEN:
             if (gc.curEvent == Event::MATCH_AND_KEEP) {
-                return {};
+                return getMatchAndKeepActions(gc);
             } else {
                 return getAllActionsInEventState(gc);
             }

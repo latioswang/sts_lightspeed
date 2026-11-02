@@ -359,6 +359,10 @@ void search::ScumSearchAgent2::weightedCardRewardPolicy(GameContext &gc) {
 void search::ScumSearchAgent2::stepEventPolicy(GameContext &gc) {
     switch (gc.curEvent) {
 
+        case Event::MATCH_AND_KEEP:
+            takeAction(gc, GameAction::getAllActionsInState(gc).front());
+            break;
+
         case Event::NEOW:
             if (gc.info.neowRewards[1].d == Neow::Drawback::CURSE || gc.info.neowRewards[2].d == Neow::Drawback::CURSE) {
                 takeAction(gc, 0);
