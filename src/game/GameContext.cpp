@@ -1315,12 +1315,8 @@ bool GameContext::obtainRelic(RelicId r) {
             break;
         }
 
-        case RelicId::BLACK_BLOOD: {
-            if (hasRelic(RelicId::BURNING_BLOOD)) {
-                relics.replaceRelic(RelicId::BURNING_BLOOD, RelicId::BLACK_BLOOD);
-            }
-            break;
-        }
+        case RelicId::BLACK_BLOOD:
+            break; // takes Burning Blood's slot below
 
         case RelicId::BOTTLED_FLAME: {
             opensScreen = obtainBottleHelper(*this, CardType::ATTACK);
@@ -1463,6 +1459,9 @@ bool GameContext::obtainRelic(RelicId r) {
     }
 
     relics.relics.push_back({r, relicData});
+    if (r == RelicId::BLACK_BLOOD && relics.has(RelicId::BURNING_BLOOD)) {
+        relics.replaceRelic(RelicId::BURNING_BLOOD, RelicId::BLACK_BLOOD);
+    }
     return opensScreen;
 }
 
