@@ -281,6 +281,9 @@ void Monster::addBlock(int amount) {
 }
 
 void Monster::die(BattleContext &bc) {
+    if (id == MonsterId::MUGGER) {
+        bc.aiRng.random(2); // for a death sound in game
+    }
     --bc.monsters.monstersAlive;
 
     if (id == MonsterId::AWAKENED_ONE && !miscInfo) { // is awakened one stage 1 // todo change to status
