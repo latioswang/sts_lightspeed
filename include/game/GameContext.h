@@ -79,7 +79,7 @@ namespace sts {
 
     struct ScreenStateInfo {
         MonsterEncounter encounter;
-        bool monsterEscaped = false;
+        bool allMonstersEscaped = false;
 
         // CardSelectScreen
         RngReference transformRng = CARD_RNG;

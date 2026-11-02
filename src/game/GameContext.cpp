@@ -1919,8 +1919,8 @@ void GameContext::openTreasureRoomChest() {
 
 Rewards GameContext::createCombatReward() {
     Rewards reward;
-    // AbstractRoom.update: no gold, and no treasureRng roll, if a monster escaped.
-    if (!info.monsterEscaped) {
+    // AbstractRoom.update: no gold, and no treasureRng roll, if every monster escaped (haveMonstersEscaped).
+    if (!info.allMonstersEscaped) {
         int goldAmt = treasureRng.random(10, 20);
         if (hasRelic(RelicId::GOLDEN_IDOL)) {
             goldAmt += std::round(static_cast<float>(goldAmt) * 0.25f);

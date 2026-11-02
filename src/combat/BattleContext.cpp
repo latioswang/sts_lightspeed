@@ -496,9 +496,12 @@ void BattleContext::exitBattle(GameContext &g) const {
     updateCardsOnExit(g.deck);
 
     g.info.stolenGold = 0;
-    g.info.monsterEscaped = false;
+    g.info.allMonstersEscaped = monsters.monsterCount > 0;
     for (int i = 0; i < monsters.monsterCount; ++i) {
         const auto &m = monsters.arr[i];
+        if (m.id == MonsterId::INVALID) {
+            continue;
+        }
 
         const bool canHaveStolenGold = m.id == MonsterId::LOOTER || m.id == MonsterId::MUGGER;
         const bool escaped = m.curHp > 0 && (m.moveHistory[0] == MMID::LOOTER_ESCAPE ||
@@ -508,7 +511,7 @@ void BattleContext::exitBattle(GameContext &g) const {
             g.info.stolenGold += m.miscInfo;
         }
         // Not tied to the stolen gold check: a thief that stole nothing (no gold to take) can still escape.
-        g.info.monsterEscaped = g.info.monsterEscaped || (canHaveStolenGold && escaped);
+        g.info.allMonstersEscaped = g.info.allMonstersEscaped && canHaveStolenGold && escaped;
     }
 
     if (outcome == Outcome::PLAYER_LOSS) {
