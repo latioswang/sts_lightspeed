@@ -109,7 +109,9 @@ void Shop::buyRelic(GameContext &gc, int idx) {
     const RelicId r = relics[idx];
 
     bool openedScreen = gc.obtainRelic(r);
-    if (openedScreen) {
+    // A relic's reward screen (Orrery, Cauldron) leaves the shop: its Proceed button opens the map, and the map's Return
+    // only goes back to the reward screen. A card selection screen returns to the shop.
+    if (openedScreen && gc.screenState != ScreenState::REWARDS) {
         gc.regainControlAction = [](GameContext &gc) {
             gc.screenState = ScreenState::SHOP_ROOM;
             gc.regainControlAction = [] (auto &gc) {
