@@ -631,64 +631,39 @@ void GameContext::populateMonsterList(const MonsterEncounter monsters[], const f
     }
 }
 
+// generateExclusions in Exordium, TheCity and TheBeyond: the first strong encounter can't repeat the last weak one's theme.
+static bool isFirstStrongEnemyExcluded(MonsterEncounter lastWeak, MonsterEncounter strong) {
+    switch (lastWeak) {
+        case MonsterEncounter::TWO_LOUSE:
+            return strong == MonsterEncounter::THREE_LOUSE;
+        case MonsterEncounter::SMALL_SLIMES:
+            return strong == MonsterEncounter::LARGE_SLIME || strong == MonsterEncounter::LOTS_OF_SLIMES;
+        case MonsterEncounter::SPHERIC_GUARDIAN:
+            return strong == MonsterEncounter::SENTRY_AND_SPHERE;
+        case MonsterEncounter::THREE_BYRDS:
+            return strong == MonsterEncounter::CHOSEN_AND_BYRDS;
+        case MonsterEncounter::CHOSEN:
+            return strong == MonsterEncounter::CHOSEN_AND_BYRDS || strong == MonsterEncounter::CULTIST_AND_CHOSEN;
+        case MonsterEncounter::THREE_DARKLINGS:
+            return strong == MonsterEncounter::THREE_DARKLINGS;
+        case MonsterEncounter::ORB_WALKER:
+            return strong == MonsterEncounter::ORB_WALKER;
+        case MonsterEncounter::THREE_SHAPES:
+            return strong == MonsterEncounter::FOUR_SHAPES;
+        default:
+            return false;
+    }
+}
+
 void GameContext::populateFirstStrongEnemy(const MonsterEncounter monsters[], const float weights[], int monstersSize) {
-    auto lastMonster = monsterList.back();
+    const auto lastMonster = monsterList.back();
     while (true) {
         int idx = rollWeightedIdx(monsterRng.random(), weights, monstersSize);
         auto toAdd = monsters[idx];
-
-        switch (toAdd) {
-
-            case MonsterEncounter::LARGE_SLIME:
-            case MonsterEncounter::LOTS_OF_SLIMES:
-                if (lastMonster == MonsterEncounter::SMALL_SLIMES) {
-                    continue;
-                }
-                break;
-
-            case MonsterEncounter::THREE_LOUSE:
-                if (lastMonster == MonsterEncounter::TWO_LOUSE) {
-                    continue;
-                }
-                break;
-
-            case MonsterEncounter::CHOSEN_AND_BYRDS:
-                break;
-            case MonsterEncounter::SENTRY_AND_SPHERE:
-                break;
-            case MonsterEncounter::SNAKE_PLANT:
-                break;
-            case MonsterEncounter::SNECKO:
-                break;
-            case MonsterEncounter::CENTURION_AND_HEALER:
-                break;
-            case MonsterEncounter::CULTIST_AND_CHOSEN:
-                break;
-            case MonsterEncounter::THREE_CULTIST:
-                break;
-            case MonsterEncounter::SHELLED_PARASITE_AND_FUNGI:
-                break;
-            case MonsterEncounter::SPIRE_GROWTH:
-                break;
-            case MonsterEncounter::TRANSIENT:
-                break;
-            case MonsterEncounter::FOUR_SHAPES:
-                break;
-            case MonsterEncounter::MAW:
-                break;
-            case MonsterEncounter::SPHERE_AND_TWO_SHAPES:
-                break;
-            case MonsterEncounter::JAW_WORM_HORDE:
-                break;
-            case MonsterEncounter::WRITHING_MASS:
-                break;
-
-            default: // should not happen
-                break;
+        if (!isFirstStrongEnemyExcluded(lastMonster, toAdd)) {
+            monsterList.push_back(toAdd);
+            return;
         }
-
-        monsterList.push_back(toAdd);
-        return;
     }
 }
 
