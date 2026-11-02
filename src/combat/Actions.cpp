@@ -249,6 +249,19 @@ Action Actions::MakeTempCardInDrawPile(const CardInstance &c, int amount, bool s
     }};
 }
 
+// BurnIncreaseAction: upgrades the Burns in the discard and draw piles (not the hand), then adds three Burn+.
+Action Actions::BurnIncrease() {
+    return {[](BattleContext &bc) {
+        for (auto &c : bc.cards.discardPile) {
+            if (c.id == CardId::BURN && !c.upgraded) c.upgrade();
+        }
+        for (auto &c : bc.cards.drawPile) {
+            if (c.id == CardId::BURN && !c.upgraded) c.upgrade();
+        }
+        bc.addToTop(Actions::MakeTempCardInDiscard(CardInstance(CardId::BURN, true), 3));
+    }};
+}
+
 Action Actions::MakeTempCardInDiscard(const CardInstance &c, int amount) {
     CardInstance c_copy(c);
     return {[=](BattleContext &bc) { // todo maybe store by reference instead of copy if CardInstance is too big to fit directly in the lambda. Make a seperate space where the card will be stored

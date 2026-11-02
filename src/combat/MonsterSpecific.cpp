@@ -806,6 +806,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
 
         case MMID::HEXAGHOST_INFERNO: // 6
             attackPlayerHelper(bc, asc4 ? 3 : 2, 6);
+            bc.addToBot(Actions::BurnIncrease());
             uniquePower0 = 0;
             setMove(MMID::HEXAGHOST_SEAR);
             bc.addToBot( Actions::NoOpRollMove() );
