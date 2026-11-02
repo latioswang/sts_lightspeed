@@ -276,7 +276,7 @@ void MonsterGroup::createMonsters(BattleContext &bc, MonsterEncounter encounter)
             createMonster(bc, MonsterId::JAW_WORM);
 
             const auto strBuff = bc.ascension >= 17 ? 5 : (bc.ascension >= 2 ? 4 : 3);
-            const auto blockBuff = bc.ascension >= 17 ? 9 : (bc.ascension >= 2 ? 6 : 5);
+            const auto blockBuff = bc.ascension >= 17 ? 9 : 6;
             for (int i = 0; i < 3; ++i) {
                 auto &m = bc.monsters.arr[i];
                 m.buff<MS::STRENGTH>(strBuff);
