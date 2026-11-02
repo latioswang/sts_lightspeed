@@ -26,12 +26,15 @@ void RelicContainer::remove(RelicId r) {
     }
 }
 
+// A new relic that replaces another takes its slot (the order decides which relic triggers first). r may already be
+// at the end of the list when this is called.
 void RelicContainer::replaceRelic(RelicId o, RelicId r) {
     setHasRelic(o, false);
     setHasRelic(r, true);
+    relics.erase(std::remove_if(relics.begin(), relics.end(), [=](const RelicInstance &relic) { return relic.id == r; }), relics.end());
     for (auto & relic : relics) {
-        if (relic.id == r) {
-            relic.id = r;
+        if (relic.id == o) {
+            relic = RelicInstance{r, 0};
             break;
         }
     }

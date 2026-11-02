@@ -1317,7 +1317,7 @@ bool GameContext::obtainRelic(RelicId r) {
 
         case RelicId::BLACK_BLOOD: {
             if (hasRelic(RelicId::BURNING_BLOOD)) {
-                relics.remove(RelicId::BURNING_BLOOD);
+                relics.replaceRelic(RelicId::BURNING_BLOOD, RelicId::BLACK_BLOOD);
             }
             break;
         }
