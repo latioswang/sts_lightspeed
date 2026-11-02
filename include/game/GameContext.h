@@ -302,6 +302,7 @@ namespace sts {
         MonsterEncounter getMonsterForRoomCreation();
         MonsterEncounter getEliteForRoomCreation();
 
+        [[nodiscard]] int goldWithIdol(int gold) const;
         void addPotionRewards(Rewards &r);
         CardReward createCardReward(Room room);
         CardReward createColorlessCardReward();

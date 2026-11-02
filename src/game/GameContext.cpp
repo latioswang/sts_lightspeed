@@ -1152,9 +1152,9 @@ void GameContext::afterBattle() {
             break;
 
         case Room::EVENT:
-            if (curEvent == Event::MYSTERIOUS_SPHERE) { // todo gold from golden idol?
+            if (curEvent == Event::MYSTERIOUS_SPHERE) {
                 Rewards reward;
-                reward.addGold(info.gold);
+                reward.addGold(goldWithIdol(info.gold));
                 reward.addRelic(info.bossRelics[0]);
                 addPotionRewards(reward);
                 reward.addCardReward(createCardReward(Room::EVENT));
@@ -1752,6 +1752,13 @@ MonsterEncounter GameContext::getEliteForRoomCreation() {
         generateElites(); // game generates 10
     }
     return eliteMonsterList[eliteMonsterListOffset++];
+}
+
+int GameContext::goldWithIdol(int gold) const {
+    if (hasRelic(RelicId::GOLDEN_IDOL)) {
+        gold += static_cast<int>(std::round(static_cast<float>(gold) * 0.25f));
+    }
+    return gold;
 }
 
 void GameContext::addPotionRewards(Rewards &r) {
@@ -2565,6 +2572,9 @@ void GameContext::chooseEventOption(int idx) {
             if (info.eventData == 0) {
                 // forced fight vs the slavers; afterwards return to this event for the second choice
                 regainControlAction = [](GameContext &gc) {
+                    // The end of every fight rolls a potion. This fight's rewards are thrown away, but the roll still counts.
+                    Rewards discarded;
+                    gc.addPotionRewards(discarded);
                     gc.info.eventData = 1;
                     gc.screenState = ScreenState::EVENT_SCREEN;
                     gc.regainControlAction = returnToMapAction;
@@ -2575,7 +2585,7 @@ void GameContext::chooseEventOption(int idx) {
             } else {
                 regainControlAction = [](GameContext &gc) {  // victory: Taskmaster + Nob for the big reward
                     Rewards reward;
-                    reward.addGold(100);
+                    reward.addGold(gc.goldWithIdol(100));
                     reward.addRelic(gc.returnRandomScreenlessRelic(RelicTier::RARE));
                     reward.addRelic(gc.returnRandomScreenlessRelic(RelicTier::UNCOMMON));
                     gc.addPotionRewards(reward);
@@ -2651,12 +2661,12 @@ void GameContext::chooseEventOption(int idx) {
 
                     regainControlAction = [=](GameContext &gc) {
                         Rewards reward;
-                        reward.addGold(goldAmt);
+                        reward.addGold(gc.goldWithIdol(goldAmt));
                         if (addRelic) {
                             reward.addRelic(combatRewardRelic);
                         }
-                        reward.addCardReward(createCardReward(Room::EVENT));
-                        addPotionRewards(reward);
+                        gc.addPotionRewards(reward);
+                        reward.addCardReward(gc.createCardReward(Room::EVENT));
                         gc.openCombatRewardScreen(reward);
                         gc.regainControlAction = returnToMapAction;
                     };
@@ -3029,8 +3039,9 @@ void GameContext::chooseEventOption(int idx) {
                 const int goldAmt = miscRng.random(25, 35);
                 regainControlAction = [goldAmt](auto &gc) {
                     Rewards reward;
-                    reward.addGold(goldAmt);
-                    reward.addRelic(RelicId::RED_MASK);
+                    reward.addGold(gc.goldWithIdol(goldAmt));
+                    reward.addRelic(gc.hasRelic(RelicId::RED_MASK) ? RelicId::CIRCLET : RelicId::RED_MASK);
+                    gc.addPotionRewards(reward);
                     reward.addCardReward(gc.createCardReward(Room::EVENT));
                     gc.openCombatRewardScreen(reward);
                     gc.regainControlAction = returnToMapAction;
@@ -3062,9 +3073,9 @@ void GameContext::chooseEventOption(int idx) {
                     const RelicId rareRelic = returnRandomRelic(RelicTier::RARE);
                     regainControlAction = [=](GameContext &gc) {
                         Rewards reward;
-                        reward.addGold(goldAmt);
+                        reward.addGold(gc.goldWithIdol(goldAmt));
                         reward.addRelic(rareRelic);
-                        addPotionRewards(reward);
+                        gc.addPotionRewards(reward);
                         reward.addCardReward(gc.createCardReward(Room::EVENT));
                         gc.openCombatRewardScreen(reward);
                         gc.regainControlAction = returnToMapAction;
@@ -3107,10 +3118,10 @@ void GameContext::chooseEventOption(int idx) {
                 const int goldAmt = miscRng.random(20, 30);
                 regainControlAction = [=](GameContext &gc) {
                     Rewards reward;
-                    reward.addGold(goldAmt);
+                    reward.addGold(gc.goldWithIdol(goldAmt));
                     reward.addRelic(RelicId::ODD_MUSHROOM);
-                    addPotionRewards(reward);
-                    reward.addCardReward(createCardReward(Room::EVENT));
+                    gc.addPotionRewards(reward);
+                    reward.addCardReward(gc.createCardReward(Room::EVENT));
                     gc.openCombatRewardScreen(reward);
                     gc.regainControlAction = returnToMapAction;
                 };
