@@ -86,6 +86,7 @@ namespace sts {
         static Action ShuffleTempCardIntoDrawPile(CardId id, int count=1);
 
         static Action BurnIncrease();
+        static Action PlayTopCardDelayed();
         static Action PlayTopCard(int monsterTargetIdx, bool exhausts);
         static Action MakeTempCardInHand(CardId card, bool upgraded= false, int amount = 1);
         static Action MakeTempCardInHand(CardInstance c, int amount = 1);

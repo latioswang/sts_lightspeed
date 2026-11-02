@@ -623,8 +623,9 @@ void Player::applyStartOfTurnPowers(BattleContext &bc) {
                 break;
 
             case PS::MAYHEM:
+                // MayhemPower queues an action that queues PlayTopCardAction, so the card is played after the turn's draw.
                 for (int i = 0; i < pair.second; i++) {
-                    bc.addToBot( Actions::PlayTopCard(bc.monsters.getRandomMonsterIdx(bc.cardRandomRng), false) ); // todo fix target
+                    bc.addToBot( Actions::PlayTopCardDelayed() );
                 }
                 break;
 

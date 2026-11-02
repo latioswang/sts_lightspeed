@@ -210,6 +210,12 @@ Action Actions::ShuffleTempCardIntoDrawPile(CardId id, int count) {
     }};
 }
 
+Action Actions::PlayTopCardDelayed() {
+    return {[](BattleContext &bc) {
+        bc.addToBot( Actions::PlayTopCard(bc.monsters.getRandomMonsterIdx(bc.cardRandomRng), false) );
+    }};
+}
+
 Action Actions::PlayTopCard(int monsterTargetIdx, bool exhausts) {
     return {[=](BattleContext &bc) {
         bc.playTopCardInDrawPile(monsterTargetIdx, exhausts);
