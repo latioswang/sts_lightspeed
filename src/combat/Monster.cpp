@@ -358,7 +358,7 @@ void Monster::attackedUnblockedHelper(BattleContext &bc, int damage) { // todo, 
             setMove(MMID::SHELLED_PARASITE_STUNNED);
         }
 
-    } else if (hasStatus<MS::CURL_UP>()) {
+    } else if (hasStatus<MS::CURL_UP>() && damage < curHp) { // CurlUpPower.onAttacked: not on a killing blow
         bc.addToBot(Actions::MonsterGainBlock(this->idx, getStatus<MS::CURL_UP>()) );
         setHasStatus<MS::CURL_UP>(false);
 
