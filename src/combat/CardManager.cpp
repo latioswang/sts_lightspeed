@@ -446,8 +446,11 @@ void CardManager::draw(BattleContext &bc, int amount) {
         }
     }
 
+    onCardDrawOrDiscard(bc);
+}
 
-    // AbstractPlayer.onCardDrawOrDiscard: skills kept in hand from another turn go back to 0 too.
+void CardManager::onCardDrawOrDiscard(const BattleContext &bc) {
+    // AbstractPlayer.onCardDrawOrDiscard: skills in hand with another cost, from another turn or Snecko Oil, go back to 0.
     if (bc.player.hasStatus<PS::CORRUPTION>()) {
         for (int i = 0; i < cardsInHand; ++i) {
             auto &c = hand[i];

@@ -2085,13 +2085,10 @@ void BattleContext::onAfterUseCard() {
             cards.shuffleIntoDrawPile(cardRandomRng, c);
 
         } else {
-            // The game calls OnCardDrawOrDiscard here which only does two things:
-            // 1. sets the damage on all shivs in hand if you have accuracy power,
-            // 2. sets the cost of all skills in hand to -9 if you have corruption
-            // we will handle these tasks elsewhere
             cards.moveToDiscardPile(c);
         }
     }
+    cards.onCardDrawOrDiscard(*this);
     // TODO these must be done in the cards method itself
     // todo make Accuracy part of calculateBaseDamage
 
