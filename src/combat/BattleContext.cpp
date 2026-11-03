@@ -1727,7 +1727,12 @@ void BattleContext::onUseAttackCard() {
 
     if (p.hasRelic<R::NECRONOMICON>() && !p.haveUsedNecronomiconThisTurn &&
         (c.costForTurn >= 2 && !c.freeToPlayOnce || c.isXCost() && item.energyOnUse >= 2)) {
-        queuePurgeCard(c, item.target);
+        // Unlike Double Tap's copy, this one isn't in limbo, so Rampage's ModifyDamageAction misses it.
+        CardInstance copy = c;
+        if (c.getId() == CardId::RAMPAGE && !item.purgeOnUse) {
+            copy.specialData = static_cast<std::int16_t>(copy.specialData - (c.isUpgraded() ? 8 : 5));
+        }
+        queuePurgeCard(copy, item.target);
         p.haveUsedNecronomiconThisTurn = true;
     }
 
