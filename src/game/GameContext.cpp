@@ -861,10 +861,13 @@ void GameContext::setupEvent() { // todo necronomicon event
             info.hpAmount0 = std::max(1, fractionMaxHp(.10f, FLOOR));
             break;
 
-        case Event::FALLING: { // todo test and CANNOT BE BOTTLED
+        case Event::FALLING: {
+            // CardHelper.returnCardOfType leaves out bottled cards.
             int counts[3] {0,0,0};
-            for (const auto &c : deck.cards) {
-                ++counts[static_cast<int>(c.getType())];
+            for (int i = 0; i < deck.cards.size(); ++i) {
+                if (!deck.isCardBottled(i) && deck.cards[i].getType() <= CardType::POWER) {
+                    ++counts[static_cast<int>(deck.cards[i].getType())];
+                }
             }
 
             int attacksIdx = counts[0] > 0 ? miscRng.random(counts[0] - 1) : -1;
@@ -880,6 +883,9 @@ void GameContext::setupEvent() { // todo necronomicon event
             info.powerCardDeckIdx = -1;
 
             for (int i = 0; i < deck.cards.size(); ++i) {
+                if (deck.isCardBottled(i)) {
+                    continue;
+                }
                 switch (deck.cards[i].getType()) {
                     case CardType::ATTACK:
                         if (attackCount++ == attacksIdx) {
@@ -2236,7 +2242,18 @@ void GameContext::drinkPotion(Potion p) {
 }
 
 void GameContext::afterEscape() {
-    // Smoke Bomb: the fight ends with no rewards; go straight back to the map
+    // Smoke Bomb: the end of the fight still rolls gold and a potion, but the reward screen opens without them.
+    if (curRoom == Room::MONSTER) {
+        treasureRng.random(10, 20);
+    } else if (curRoom == Room::ELITE) {
+        treasureRng.random(25, 35);
+        returnRandomRelic(returnRandomRelicTierElite(relicRng));
+        if (hasRelic(RelicId::BLACK_STAR)) {
+            returnNonCampfireRelic(returnRandomRelicTierElite(relicRng));
+        }
+    }
+    Rewards discarded;
+    addPotionRewards(discarded);
     regainControlAction = returnToMapAction;
     regainControl();
 }
@@ -3382,10 +3399,18 @@ void GameContext::chooseEventOption(int idx) {
 
         case Event::THE_MAUSOLEUM: {
             if (idx == 0) {
-                obtainRelic(returnRandomScreenlessRelic(returnRandomRelicTier(relicRng, act)));  // FIX: relic was missing
-                auto result = miscRng.randomBoolean();
-                if (result || unfavorable) {
+                // The game creates the curse's obtain effect first, and that's where Omamori checks, so the relic
+                // found here can't stop this curse. Everything else about the curse happens after the relic is in.
+                const auto result = miscRng.randomBoolean();
+                const auto relic = returnRandomScreenlessRelic(returnRandomRelicTier(relicRng, act));
+                if (relic == RelicId::OMAMORI && (result || unfavorable)) {
                     deck.obtain(*this, CardId::WRITHE);
+                    obtainRelic(relic);
+                } else {
+                    obtainRelic(relic);
+                    if (result || unfavorable) {
+                        deck.obtain(*this, CardId::WRITHE);
+                    }
                 }
                 regainControl();
 
