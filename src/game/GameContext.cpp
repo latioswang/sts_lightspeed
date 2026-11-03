@@ -62,6 +62,7 @@ GameContext::GameContext(CharacterClass cc, std::uint64_t seed, int ascension)
     generateMonsters();
     initRelics();
     initPlayer();
+    miscRng.random(1); // MainMusic picks the act's song, and Neow's rewards can use this stream
 
     potionCapacity = ascension < 11 ? 3 : 2;
     std::fill(potions.begin(), potions.end(), Potion::EMPTY_POTION_SLOT);
@@ -1777,8 +1778,8 @@ int GameContext::goldWithIdol(int gold) const {
 }
 
 void GameContext::addPotionRewards(Rewards &r) {
-    // assume if in a monsters room, they didnt escape
-    int chance = 40 + potionChance;
+    // haveMonstersEscaped leaves the chance at 0, and the roll still happens
+    int chance = info.allMonstersEscaped ? 0 : 40 + potionChance;
 
     if (hasRelic(RelicId::WHITE_BEAST_STATUE)) {
         chance = 100;
