@@ -84,9 +84,8 @@ Action Actions::DamageAllEnemy(int damage) { // todo this is probably broken
 
 Action Actions::AttackPlayer(int idx, int damage) {
     return {[=] (BattleContext &bc) {
-        // DamageAction.shouldCancelAction: a dying attacker's remaining hits don't land. A half-dead one isn't dying.
-        const auto &m = bc.monsters.arr[idx];
-        if (m.isDying() && !m.isHalfDead()) {
+        // DamageAction drops a dying or half-dead attacker's remaining hits.
+        if (bc.monsters.arr[idx].isDying()) {
             return;
         }
         bc.player.attacked(bc, idx, damage);

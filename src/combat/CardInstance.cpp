@@ -145,11 +145,12 @@ void CardInstance::upgrade() {
             ++specialData;
             break;
 
-        case CardId::BLOOD_FOR_BLOOD: // the game upgrades the cost to 3 if the cost is over 4 but would it ever be higher?
-            if (!isUpgraded() && cost < 4 && cost > 0) {
-                upgradeBaseCost(cost-1);
+        case CardId::BLOOD_FOR_BLOOD: // upgrading lowers its current cost by 1, or sets it to 3 from 4 or more
+            if (!isUpgraded()) {
+                upgradeBaseCost(cost < 4 ? std::max(cost - 1, 0) : 3);
+                upgraded = true;
             }
-            break;
+            return;
 
         case CardId::BLIND:
         case CardId::TRIP:
