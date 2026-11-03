@@ -408,10 +408,6 @@ void Player::applyEndOfTurnPowers(BattleContext &bc) {
                 bc.addToBot(Actions::RemoveStatus<PS::LOSE_STRENGTH>());
                 break;
 
-            case PS::NO_DRAW:
-                bc.addToBot(Actions::RemoveStatus<PS::NO_DRAW>());
-                break;
-
             case PS::OMEGA:
                 bc.addToBot(Actions::DamageAllEnemy(pair.second));
                 break;
@@ -443,6 +439,12 @@ void Player::applyEndOfTurnPowers(BattleContext &bc) {
             default:
                 break;
         }
+    }
+
+    // Powers trigger in the order they were gained, which this map doesn't keep. No Draw usually comes last, from a card
+    // played this turn, so Combust's HP loss doesn't get a Runic Cube draw.
+    if (hasStatus<PS::NO_DRAW>()) {
+        bc.addToBot(Actions::RemoveStatus<PS::NO_DRAW>());
     }
 }
 

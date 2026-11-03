@@ -443,6 +443,17 @@ void CardManager::draw(BattleContext &bc, int amount) {
         }
     }
 
+
+    // AbstractPlayer.onCardDrawOrDiscard: skills kept in hand from another turn go back to 0 too.
+    if (bc.player.hasStatus<PS::CORRUPTION>()) {
+        for (int i = 0; i < cardsInHand; ++i) {
+            auto &c = hand[i];
+            if (c.getType() == CardType::SKILL && c.costForTurn != 0 && (c.costForTurn > 0 || c.cost >= 0)) {
+                c.cost = 0; // modifyCostForCombat, so it stays free after the turn
+                c.costForTurn = 0;
+            }
+        }
+    }
 }
 
 void CardManager::onTookDamage() {

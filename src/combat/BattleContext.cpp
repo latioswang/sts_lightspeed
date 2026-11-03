@@ -212,7 +212,9 @@ void BattleContext::initRelics(const GameContext &gc) {
             case R::PHILOSOPHERS_STONE:
                 for (int i = 0; i < monsters.monsterCount; ++i) {
                     auto &m = monsters.arr[i];
-                    m.buff<MS::STRENGTH>(1);
+                    if (m.isTargetable()) { // not the empty slots Bronze Automaton's orbs will use
+                        m.buff<MS::STRENGTH>(1);
+                    }
                 }
                 p.energyPerTurn++;
                 break;
@@ -1870,9 +1872,12 @@ void BattleContext::onUseSkillCard() {
     // ********* Enemy Powers onUseCard *********
     // todo Choke Power
 
-    auto &m = monsters.arr[0];
-    if (m.hasStatus<MS::ENRAGE>()) {
-        m.buff<MS::STRENGTH>(m.getStatus<MS::ENRAGE>());
+    // Colosseum's second fight has Gremlin Nob in the second slot.
+    for (int i = 0; i < monsters.monsterCount; ++i) {
+        auto &m = monsters.arr[i];
+        if (m.hasStatus<MS::ENRAGE>()) {
+            m.buff<MS::STRENGTH>(m.getStatus<MS::ENRAGE>());
+        }
     }
 }
 
@@ -2189,6 +2194,10 @@ void BattleContext::callEndTurnEarlySequence() {
         if (item.autoplay && !item.purgeOnUse) {
             addToBot( Actions::TimeEaterPlayCardQueueItem(item) );
         }
+    }
+    // Unceasing Top still sees the empty hand while the end of the turn is queued. Seen on the real game with Time Warp.
+    if (player.hasRelic<R::UNCEASING_TOP>() && cards.cardsInHand == 0) {
+        addToBot( Actions::DrawCards(1) );
     }
     addToTopCard(CardQueueItem::endTurnItem());
     endTurnQueued = true;
