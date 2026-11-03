@@ -1479,7 +1479,7 @@ bool GameContext::obtainRelic(RelicId r) {
 
             playerIncreaseMaxHp(5);
             Rewards reward;
-            reward.addGold(50);
+            reward.addGold(goldWithIdol(50));
             reward.addPotion(getRandomPotion(miscRng, cc));
             reward.addCardReward(createCardReward(curRoom));
             openCombatRewardScreen(reward);
