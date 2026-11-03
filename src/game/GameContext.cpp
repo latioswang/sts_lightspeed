@@ -2357,8 +2357,9 @@ void GameContext::chooseNeowOption(const Neow::Option &o) {
         }
 
         case Neow::Bonus::RANDOM_COMMON_RELIC:
-            obtainRelic(returnRandomRelic(RelicTier::COMMON, false, true));
-            regainControlAction(*this);
+            if (!obtainRelic(returnRandomRelic(RelicTier::COMMON, false, true))) {
+                regainControlAction(*this);
+            }
             break;
 
         case Neow::Bonus::TEN_PERCENT_HP_BONUS:
@@ -2387,8 +2388,9 @@ void GameContext::chooseNeowOption(const Neow::Option &o) {
             break;
 
         case Neow::Bonus::ONE_RARE_RELIC:
-            obtainRelic(returnRandomRelic(RelicTier::RARE, false, true));
-            regainControlAction(*this);
+            if (!obtainRelic(returnRandomRelic(RelicTier::RARE, false, true))) {
+                regainControlAction(*this);
+            }
             break;
 
         case Neow::Bonus::THREE_RARE_CARDS:
