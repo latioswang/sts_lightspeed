@@ -1371,6 +1371,11 @@ bool GameContext::obtainRelic(RelicId r) {
             break;
         }
 
+        case RelicId::MATRYOSHKA: {
+            relicData = 2;
+            break;
+        }
+
         case RelicId::NEOWS_LAMENT: {
             relicData = 3;
             break;
