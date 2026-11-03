@@ -1655,7 +1655,7 @@ CardRarity GameContext::rollCardRarity(Room room) {
         return CardRarity::RARE;
     }
 
-    int rareChance = (room == Room::ELITE ? 10 : 3);
+    int rareChance = room == Room::ELITE ? 10 : (room == Room::SHOP ? 9 : 3);  // ShopRoom sets baseRareCardChance, for Orrery and Cauldron
     const int uncommonChance = (room == Room::ELITE ? 40 : 37);
 
     if (room != Room::REST && hasRelic(RelicId::NLOTHS_GIFT)) {
