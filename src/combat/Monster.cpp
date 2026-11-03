@@ -539,7 +539,11 @@ void Monster::onHpLost(BattleContext &bc, int amount) {
                 if (newModeShiftAmount <= 0) {
                     removeStatus<MS::MODE_SHIFT>();
                     setMove(MMID::THE_GUARDIAN_DEFENSIVE_MODE);
-                    bc.addToBot( Actions::MonsterGainBlock(idx, 20) );
+                    // ChangeStateAction queues the block when it runs, which lands it behind a queued monster start of turn
+                    const int guardianIdx = idx;
+                    bc.addToBot( Action{[=] (BattleContext &b) {
+                        b.addToBot( Actions::MonsterGainBlock(guardianIdx, 20) );
+                    }} );
                 } else {
                     setStatus<MS::MODE_SHIFT>(newModeShiftAmount);
                 }
