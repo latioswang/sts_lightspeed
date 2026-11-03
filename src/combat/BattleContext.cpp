@@ -861,6 +861,10 @@ void BattleContext::executeActions() {
 
             if (cards.cardsInHand == 0) {
                 drawCards(1);
+                // an empty draw pile only queues the shuffle and the draw; Evolve and the like queue theirs too
+                if (!actionQueue.isEmpty()) {
+                    continue;
+                }
             }
         }
 
@@ -1027,7 +1031,7 @@ void BattleContext::useAttackCard() {
 
         case CardId::ANGER:
             addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 8 : 6)) );
-            addToBot( Actions::MakeTempCardInDiscard( CardInstance(CardId::ANGER, up), 1) );
+            addToBot( Actions::MakeTempCardInDiscard(c, 1) );  // makeStatEquivalentCopy keeps a changed cost
             break;
 
         case CardId::BASH:
