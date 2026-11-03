@@ -186,13 +186,22 @@ CardId sts::getRandomCurse(Random &cardRng) {
     return curseCardPool[idx];
 }
 
-CardId sts::getRandomCurse(Random &rng, CardId exclude) {
-    int idx = rng.random(curseCardPoolSize-2);
-    if (curseCardPool[idx] == exclude) {
-        return curseCardPool[idx+1];
-    } else {
-        return curseCardPool[idx];
+CardId sts::randomCardExcept(Random &rng, const CardId *pool, int poolSize, CardId exclude) {
+    // The game builds a list that leaves the card out, so everything after it moves up one.
+    int excludeIdx = poolSize;
+    for (int i = 0; i < poolSize; ++i) {
+        if (pool[i] == exclude) {
+            excludeIdx = i;
+            break;
+        }
     }
+    const int listSize = excludeIdx < poolSize ? poolSize-1 : poolSize;
+    const int idx = rng.random(listSize-1);
+    return pool[idx < excludeIdx ? idx : idx+1];
+}
+
+CardId sts::getRandomCurse(Random &rng, CardId exclude) {
+    return randomCardExcept(rng, curseCardPool, curseCardPoolSize, exclude);
 }
 
 CardId sts::getTrulyRandomCard(Random &cardRandomRng, CharacterClass cc) {
@@ -201,12 +210,7 @@ CardId sts::getTrulyRandomCard(Random &cardRandomRng, CharacterClass cc) {
 }
 
 CardId sts::returnTrulyRandomColorlessCardFromAvailable(Random &rng, CardId exclude) {
-    int idx = rng.random(srcColorlessCardPoolSize-2);
-    if (srcColorlessCardPool[idx] == exclude) {
-        return srcColorlessCardPool[idx + 1];
-    } else {
-        return srcColorlessCardPool[idx];
-    }
+    return randomCardExcept(rng, srcColorlessCardPool, srcColorlessCardPoolSize, exclude);
 }
 
 CardId sts::getTrulyRandomColorlessCardInCombat(Random &cardRandomRng) {
