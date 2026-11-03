@@ -674,11 +674,11 @@ void GameContext::populateFirstStrongEnemy(const MonsterEncounter monsters[], co
 void GameContext::transitionToAct(int targetAct) {
     act = targetAct;
 
-    if (cardRng.counter < 250) {
+    if (cardRng.counter > 0 && cardRng.counter < 250) {
         cardRng.setCounter(250);
-    } else if (cardRng.counter < 500) {
+    } else if (cardRng.counter > 250 && cardRng.counter < 500) {
         cardRng.setCounter(500);
-    } else if (cardRng.counter < 750) {
+    } else if (cardRng.counter > 500 && cardRng.counter < 750) {
         cardRng.setCounter(750);
     }
 
@@ -829,6 +829,7 @@ void GameContext::transitionToMapNode(int mapNodeX) {
 void GameContext::setupEvent() { // todo necronomicon event
     screenState = ScreenState::EVENT_SCREEN;
     const bool unfavorable = ascension >= 15;
+    info.eventData = 0; // Scrap Ooze's failed reaches would otherwise carry over to Colosseum's phase
 
     switch (curEvent) {
         case Event::BIG_FISH:
@@ -923,7 +924,7 @@ void GameContext::setupEvent() { // todo necronomicon event
 
         case Event::GOLDEN_IDOL:
             info.hpAmount0 = fractionMaxHp(unfavorable ? 0.35f : 0.25f);
-            info.hpAmount1 = fractionMaxHp(unfavorable ? 0.10f : 0.08f);
+            info.hpAmount1 = std::max(fractionMaxHp(unfavorable ? 0.10f : 0.08f), 1);
             break;
 
         case Event::KNOWING_SKULL:
@@ -2133,9 +2134,6 @@ void GameContext::damagePlayer(int amount) {
 #ifdef sts_asserts
     assert(amount > 0);
 #endif
-    if (amount <= 5 && relics.has(RelicId::TORII)) {
-        amount = 1;
-    }
     playerLoseHp(amount);
 }
 
@@ -2284,8 +2282,7 @@ void GameContext::chooseNeowOption(const Neow::Option &o) {
 
     switch (o.d) {
         case Neow::Drawback::TEN_PERCENT_HP_LOSS:
-            maxHp = static_cast<int>(0.9f * static_cast<float>(maxHp));
-            curHp = std::min(curHp, maxHp);
+            loseMaxHp(static_cast<int>(static_cast<float>(maxHp) * 0.1f));
             break;
 
         case Neow::Drawback::NO_GOLD:
@@ -2293,7 +2290,7 @@ void GameContext::chooseNeowOption(const Neow::Option &o) {
             break;
 
         case Neow::Drawback::PERCENT_DAMAGE:
-            curHp = curHp / 10 * 7;
+            curHp -= curHp / 10 * 3;
             break;
 
         case Neow::Drawback::LOSE_STARTER_RELIC:
@@ -2412,7 +2409,7 @@ void GameContext::chooseNeowOption(const Neow::Option &o) {
             break;
 
         case Neow::Bonus::TWENTY_PERCENT_HP_BONUS:
-            playerIncreaseMaxHp(static_cast<int>(static_cast<float>(maxHp) * 0.2f));
+            playerIncreaseMaxHp(static_cast<int>(static_cast<float>(maxHp) * 0.1f) * 2);
             regainControlAction(*this);
             break;
 
@@ -3097,7 +3094,7 @@ void GameContext::chooseEventOption(int idx) {
                     };
                     java::Collections::shuffle(bosses, bosses+3, java::Random(miscRng.randomLong()));
 
-                    const int goldAmt = unfavorable ? 25 : 50;
+                    const int goldAmt = ascension >= 13 ? 25 : 50; // the only event rule that isn't at A15
                     const RelicId rareRelic = returnRandomRelic(RelicTier::RARE);
                     regainControlAction = [=](GameContext &gc) {
                         Rewards reward;
@@ -3309,7 +3306,8 @@ void GameContext::chooseEventOption(int idx) {
 
         case Event::SHINING_LIGHT: {
             if (idx == 0) {
-                damagePlayer(info.hpAmount0);
+                // the only event damage Torii sees: others have no owner or are HP loss
+                damagePlayer(info.hpAmount0 <= 5 && relics.has(RelicId::TORII) ? 1 : info.hpAmount0);
                 auto list = deck.getUpgradeableCardIdxs();
                 java::Collections::shuffle(list.begin(), list.end(), java::Random(miscRng.randomLong()));
                 if (!list.empty()) {
