@@ -574,13 +574,6 @@ int Monster::calculateDamageToPlayer(const BattleContext &bc, int baseDamage) co
     const auto &p = bc.player;
     auto damage = static_cast<float>(baseDamage + getStatus<MS::STRENGTH>());
 
-    if (p.hasStatus<PS::SURROUNDED>()) { // todo this is probably wrong
-        const bool facingSelf = p.lastTargetedMonster == idx || bc.monsters.arr[p.lastTargetedMonster].isDeadOrEscaped();
-        if (!facingSelf) {
-            damage *= 1.5;
-        }
-    }
-
     if (hasStatus<MS::WEAK>()) {
         if (p.hasRelic<RelicId::PAPER_KRANE>()) {
             damage *= 0.6f;
@@ -601,12 +594,39 @@ int Monster::calculateDamageToPlayer(const BattleContext &bc, int baseDamage) co
         damage *= 2;
     }
 
-    // apply backIdx attack for spire guard elites
-
     if (p.hasStatus<PS::INTANGIBLE>()) {
         damage = std::min(damage, static_cast<float>(1));
     }
 
+    int output = std::max(static_cast<int>(std::floor(damage)), 0);
+    if (isBackAttack(bc)) { // AbstractMonster.applyPowers multiplies DamageInfo's rounded output
+        output = static_cast<int>(static_cast<float>(output) * 1.5f);
+    }
+    return output;
+}
+
+bool Monster::isBackAttack(const BattleContext &bc) const {
+    const auto &p = bc.player;
+    return p.hasStatus<PS::SURROUNDED>() && p.lastTargetedMonster != idx && !bc.monsters.arr[p.lastTargetedMonster].isDeadOrEscaped();
+}
+
+int Monster::intentDamageToPlayer(const BattleContext &bc, int baseDamage) const {
+    if (!isBackAttack(bc)) {
+        return calculateDamageToPlayer(bc, baseDamage);
+    }
+    // calculateDamage multiplies the unrounded damage, so the intent can read 1 above what the attack deals.
+    const auto &p = bc.player;
+    auto damage = static_cast<float>(baseDamage + getStatus<MS::STRENGTH>());
+    if (hasStatus<MS::WEAK>()) {
+        damage *= p.hasRelic<RelicId::PAPER_KRANE>() ? 0.6f : 0.75f;
+    }
+    if (p.hasStatus<PS::VULNERABLE>()) {
+        damage *= p.hasRelic<RelicId::ODD_MUSHROOM>() ? 1.25f : 1.5f;
+    }
+    damage = static_cast<float>(static_cast<int>(damage * 1.5f));
+    if (p.hasStatus<PS::INTANGIBLE>()) {
+        damage = std::min(damage, static_cast<float>(1));
+    }
     return std::max(static_cast<int>(std::floor(damage)), 0);
 }
 

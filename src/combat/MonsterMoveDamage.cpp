@@ -66,7 +66,6 @@ DamageInfo Monster::getMoveBaseDamage(const BattleContext &bc) const {
         case MonsterMoveId::DONU_BEAM:                      return {asc4 ? 12 : 10, 2};
 
         case MonsterMoveId::EXPLODER_SLAM:                  return {asc2 ? 11 : 9};
-        case MonsterMoveId::EXPLODER_EXPLODE:               return {30}; // todo should this be classified as move damage?
 
         case MonsterMoveId::FAT_GREMLIN_SMASH:              return {asc2 ? 5 : 4};
         case MonsterMoveId::FUNGI_BEAST_BITE:               return {6};

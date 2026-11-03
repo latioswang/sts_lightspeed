@@ -156,6 +156,8 @@ namespace sts {
         [[nodiscard]] MMID getMoveForRoll(BattleContext &bc, int &monsterData, int roll) const;
 
         [[nodiscard]] int calculateDamageToPlayer(const BattleContext &bc, int baseDamage) const;
+        [[nodiscard]] int intentDamageToPlayer(const BattleContext &bc, int baseDamage) const;
+        [[nodiscard]] bool isBackAttack(const BattleContext &bc) const;
         void attackPlayerHelper(BattleContext &bc, int baseDamage, int times=1);
         void takeTurn(BattleContext &bc);
         [[nodiscard]] DamageInfo getMoveBaseDamage(const BattleContext &bc) const;
