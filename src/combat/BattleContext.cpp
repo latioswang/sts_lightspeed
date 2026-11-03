@@ -281,9 +281,16 @@ void BattleContext::initRelics(const GameContext &gc) {
                 p.buff<PS::FOCUS>(1);
                 break;
 
-            case R::DU_VU_DOLL:
-                p.buff<PS::STRENGTH>(r.data);
+            case R::DU_VU_DOLL: {
+                int curses = 0;
+                for (const auto &c : gc.deck.cards) {
+                    if (c.getType() == CardType::CURSE) {
+                        ++curses;
+                    }
+                }
+                p.buff<PS::STRENGTH>(curses);
                 break;
+            }
 
             case R::FOSSILIZED_HELIX:
                 p.buff<PS::BUFFER>(1);
