@@ -170,6 +170,9 @@ void Deck::obtain(GameContext &gc, Card card, int count) {
                 transformableCount += count;
                 cardTypeCounts[static_cast<int>(CardType::CURSE)] += count;
             }
+            if (gc.relics.has(RelicId::DARKSTONE_PERIAPT)) {
+                gc.playerIncreaseMaxHp(6 * count);
+            }
             break;
 
         case CardType::STATUS:
