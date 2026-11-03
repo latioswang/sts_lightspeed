@@ -3055,14 +3055,16 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
         }
 
         case MonsterId::SPIRE_GROWTH: {
-            const auto useConstrict = !bc.player.hasStatus<PS::CONSTRICTED>()
-                                      && !lastMove(MMID::SPIRE_GROWTH_CONSTRICT)
-                                      && (asc17 || roll >= 50);
-            if (useConstrict) {
+            const auto canConstrict = !bc.player.hasStatus<PS::CONSTRICTED>()
+                                      && !lastMove(MMID::SPIRE_GROWTH_CONSTRICT);
+            if (asc17 && canConstrict) {
                 return (MMID::SPIRE_GROWTH_CONSTRICT);
 
             } else if (roll < 50 && !lastTwoMoves(MMID::SPIRE_GROWTH_QUICK_TACKLE)) {
                 return (MMID::SPIRE_GROWTH_QUICK_TACKLE);
+
+            } else if (canConstrict) {
+                return (MMID::SPIRE_GROWTH_CONSTRICT);
 
             } else if (!lastTwoMoves(MMID::SPIRE_GROWTH_SMASH)) {
                 return (MMID::SPIRE_GROWTH_SMASH);
