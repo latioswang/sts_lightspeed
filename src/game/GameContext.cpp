@@ -1384,6 +1384,11 @@ bool GameContext::obtainRelic(RelicId r) {
             break;
         }
 
+        case RelicId::NLOTHS_HUNGRY_FACE: {
+            relicData = 1;
+            break;
+        }
+
         case RelicId::NEOWS_LAMENT: {
             relicData = 3;
             break;
@@ -1923,13 +1928,13 @@ void GameContext::openTreasureRoomChest() {
 
     auto relic = returnRandomRelic(info.tier, false);
     if (hasRelic(RelicId::NLOTHS_HUNGRY_FACE) && relics.getRelicValue(RelicId::NLOTHS_HUNGRY_FACE) > 0) {
+        // removeOneRelicFromRewards takes the sapphire key linked to the relic as well
         --relics.getRelicValueRef(RelicId::NLOTHS_HUNGRY_FACE);
     } else {
         reward.addRelic(relic);
-    }
-
-    if (!hasKey(Key::SAPPHIRE_KEY)) {
-        reward.sapphireKey = true;
+        if (!hasKey(Key::SAPPHIRE_KEY)) {
+            reward.sapphireKey = true;
+        }
     }
 
     openCombatRewardScreen(reward);

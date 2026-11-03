@@ -587,8 +587,10 @@ Action Actions::PutRandomCardsInDrawPile(CardType type, int count) {
 
         for (int i = 0; i < count; ++i) {
             CardInstance card(ids[i], false);
-            card.cost = 0;
-            card.costForTurn = 0;
+            if (card.cost > 0) {
+                card.cost = 0;
+                card.costForTurn = 0;
+            }
 
             const int idx = bc.cards.drawPile.empty() ? 0 : bc.cardRandomRng.random(static_cast<int>(bc.cards.drawPile.size()-1));
             bc.cards.createTempCardInDrawPile(idx, card);
