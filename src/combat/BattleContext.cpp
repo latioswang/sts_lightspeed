@@ -30,6 +30,13 @@ void BattleContext::init(const GameContext &gc, MonsterEncounter encounterToInit
     monsterHpRng = startRandom;
     shuffleRng = startRandom;
     cardRandomRng = startRandom;
+    if (gc.curRoom == Room::EVENT && gc.curEvent == Event::COLOSSEUM && gc.info.eventData == 1) {
+        // Its second fight is in the same room, so the streams carry on from the first.
+        aiRng = gc.aiRng;
+        monsterHpRng = gc.monsterHpRng;
+        shuffleRng = gc.shuffleRng;
+        cardRandomRng = gc.cardRandomRng;
+    }
     miscRng = gc.miscRng;
     potionRng = gc.potionRng;
 
@@ -2725,7 +2732,7 @@ void BattleContext::triggerOnOtherCardPlayed(const CardInstance &usedCard) {
         --painCount;
     }
     for (int i = 0; i < painCount; ++i) {
-        addToTop(Actions::PlayerLoseHp(1));
+        addToTop(Actions::PlayerLoseHp(1, true));
     }
 
     const auto thousandCuts = player.getStatus<PS::THOUSAND_CUTS>();

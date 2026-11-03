@@ -690,8 +690,8 @@ void Player::applyStartOfTurnPostDrawPowers(BattleContext &bc) {
 
         switch (pair.first) {
             case PS::BRUTALITY:
-                bc.addToBot( Actions::PlayerLoseHp(pair.second) );
                 bc.addToBot( Actions::DrawCards(pair.second) );
+                bc.addToBot( Actions::PlayerLoseHp(pair.second, true) );
                 break;
 
             case PS::DEMON_FORM:
