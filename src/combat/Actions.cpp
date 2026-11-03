@@ -809,7 +809,7 @@ Action Actions::ExhumeAction() { // todo this is bugged because the selected car
         if (nonExhumeCards == 0) {
             return;
 
-        } else if (nonExhumeCards == 1) {
+        } else if (bc.cards.exhaustPile.size() == 1) { // with more, the game opens its grid even for one choice
             bc.chooseExhumeCard(lastNonExhumeIdx);
 
         } else {
@@ -1205,6 +1205,7 @@ Action Actions::RitualDaggerAction(int idx, int damage) {
 
         const bool shouldUpgrade = !m.hasStatus<MS::MINION>()
                                    && !m.isAlive()
+                                   && !m.isHalfDead()
                                    && !(m.hasStatus<MS::REGROW>() && bc.monsters.monstersAlive > 0);
         if (shouldUpgrade) {
             auto &c = bc.curCardQueueItem.card;
