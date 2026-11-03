@@ -1505,7 +1505,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
 
         case MMID::WRITHING_MASS_FLAIL: // 2
             attackPlayerHelper(bc, asc2 ? 16 : 15);
-            bc.addToBot( Actions::MonsterGainBlock(idx, asc2 ? 18 : 16) );
+            bc.addToBot( Actions::MonsterGainBlock(idx, asc2 ? 16 : 15) );
             bc.addToBot( Actions::RollMove(idx) );
             break;
 
@@ -2520,6 +2520,7 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
             // 2 attack
             // 3 scythe
             // 4 debuff
+            // scytheCooldown is set to 2 and drops at the start of getMove, so it only rules out the very next move.
 
             if (firstTurn()) {
                 if (roll < 50) {
@@ -2530,7 +2531,7 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
             }
 
             if (roll < 30) {
-                if (!eitherLastTwo(MMID::NEMESIS_SCYTHE)) {
+                if (!lastMove(MMID::NEMESIS_SCYTHE)) {
                     return MMID::NEMESIS_SCYTHE;
 
                 } else if (bc.aiRng.randomBoolean()) {
@@ -2552,7 +2553,7 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
                 if (!lastTwoMoves(MMID::NEMESIS_ATTACK)) {
                     return MMID::NEMESIS_ATTACK;
 
-                } else if (!bc.aiRng.randomBoolean() || eitherLastTwo(MMID::NEMESIS_SCYTHE)) {
+                } else if (!bc.aiRng.randomBoolean() || lastMove(MMID::NEMESIS_SCYTHE)) {
                     return MMID::NEMESIS_DEBUFF;
 
                 } else {
@@ -2564,7 +2565,7 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
                 return MMID::NEMESIS_DEBUFF;
             }
 
-            if (bc.aiRng.randomBoolean() && !eitherLastTwo(MMID::NEMESIS_SCYTHE)) {
+            if (bc.aiRng.randomBoolean() && !lastMove(MMID::NEMESIS_SCYTHE)) {
                 return MMID::NEMESIS_SCYTHE;
             }
 
