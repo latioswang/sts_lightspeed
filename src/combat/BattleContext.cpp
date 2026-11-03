@@ -867,7 +867,9 @@ void BattleContext::playCardQueueItem(CardQueueItem playItem) {
     }
 
 //    bool canPlayCard = false; // not really sure what this is used for
-    const bool canUseCard = item.purgeOnUse || (item.triggerOnUse && c.canUse(*this, item.target, item.autoplay) && (!c.requiresTarget() || monsters.arr[item.target].isTargetable()));
+    // Copies go through canUse too: only the energy check knows about autoplay, so Velvet Choker can stop a Double Tap copy.
+    const bool canUseCard = item.triggerOnUse && isCardPlayAllowed() && c.canUse(*this, item.target, item.autoplay)
+            && (!c.requiresTarget() || monsters.arr[item.target].isTargetable());
     if (canUseCard) { // not sure if this is correct,
 //        canPlayCard = true; // what is this for......
 
@@ -1108,7 +1110,8 @@ void BattleContext::useAttackCard() {
 
         case CardId::PERFECTED_STRIKE: {
             // hack because we calculate strikeCount while non purge cards are still in hand.
-            const int strikeDmg = cards.strikeCount * (up ? 3 : 2);
+            // A card played off the top of the draw pile is in limbo in the game, where countCards doesn't look.
+            const int strikeDmg = (cards.strikeCount - (item.autoplay && !item.purgeOnUse ? 1 : 0)) * (up ? 3 : 2);
             const int baseDamage = 6 + strikeDmg;
             addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, baseDamage)) );
             break;
