@@ -1390,6 +1390,22 @@ bool GameContext::obtainRelic(RelicId r) {
             break;
         }
 
+        // An egg also upgrades the cards on the reward screen it came from.
+        case RelicId::MOLTEN_EGG:
+        case RelicId::TOXIC_EGG:
+        case RelicId::FROZEN_EGG: {
+            const auto type = r == RelicId::MOLTEN_EGG ? CardType::ATTACK : r == RelicId::TOXIC_EGG ? CardType::SKILL : CardType::POWER;
+            auto &rewards = info.rewardsContainer;
+            for (int i = 0; i < rewards.cardRewardCount; ++i) {
+                for (auto &c : rewards.cardRewards[i]) {
+                    if (c.getType() == type && c.canUpgrade() && !c.isUpgraded()) {
+                        c.upgrade();
+                    }
+                }
+            }
+            break;
+        }
+
         case RelicId::NEOWS_LAMENT: {
             relicData = 3;
             break;
@@ -1614,6 +1630,9 @@ void GameContext::relicsOnEnterRoom(Room room) {
         case Room::REST:
             if (hasRelic(RelicId::ETERNAL_FEATHER)) {
                 playerHeal(deck.size() / 5 * 3);
+            }
+            if (hasRelic(RelicId::ANCIENT_TEA_SET)) {
+                relics.getRelicValueRef(RelicId::ANCIENT_TEA_SET) = -2; // stays ready until the next fight, like the game's counter
             }
             break;
 

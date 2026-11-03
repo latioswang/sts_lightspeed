@@ -234,7 +234,7 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::ANCIENT_TEA_SET:
-                if (gc.lastRoom == Room::REST) {
+                if (gc.relics.getRelicValue(R::ANCIENT_TEA_SET) == -2) {
                     p.gainEnergy(2);
                 }
                 break;
@@ -538,6 +538,10 @@ void BattleContext::updateRelicsOnExit(GameContext &g) const {
     const auto victoryHeal = [&g](int amount) { return g.hasRelic(RelicId::MAGIC_FLOWER) ? (amount * 3 + 1) / 2 : amount; };
     for (auto &r : g.relics.relics) {
         switch (r.id) {
+            case RelicId::ANCIENT_TEA_SET:
+                r.data = 0;
+                break;
+
             case RelicId::HAPPY_FLOWER:
                 r.data = player.happyFlowerCounter;
                 break;
