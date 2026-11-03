@@ -260,8 +260,9 @@ Action Actions::MakeTempCardInDrawPile(const CardInstance &c, int amount, bool s
             if (shuffleInto) {
                 const int idx = bc.cards.drawPile.empty() ? 0 : bc.cardRandomRng.random(static_cast<int>(bc.cards.drawPile.size()-1));
                 bc.cards.createTempCardInDrawPile(idx, c);
+            } else {
+                bc.cards.createTempCardInDrawPile(static_cast<int>(bc.cards.drawPile.size()), c);
             }
-            // todo else
         }
     }};
 }
@@ -381,14 +382,14 @@ Action Actions::DamageRandomEnemy(int damage) {
     }};
 }
 
-Action Actions::ExhaustRandomCardInHand(int count) {
+Action Actions::ExhaustRandomCardInHand(int count, bool anyNumber) {
     return {[=] (BattleContext &bc) {
         for (int i = 0; i < count; ++i) {
             if (bc.cards.cardsInHand <= 0) {
                 return;
             }
             // ExhaustAction takes from the top without rolling when the hand has no more cards than it needs.
-            const auto idx = bc.cards.cardsInHand <= count - i ? bc.cards.cardsInHand - 1 : bc.cards.getRandomCardIdxInHand(bc.cardRandomRng);
+            const auto idx = !anyNumber && bc.cards.cardsInHand <= count - i ? bc.cards.cardsInHand - 1 : bc.cards.getRandomCardIdxInHand(bc.cardRandomRng);
             auto c = bc.cards.hand[idx];
             bc.cards.removeFromHandAtIdx(idx);
             bc.triggerAndMoveToExhaustPile(c);
@@ -670,7 +671,7 @@ Action Actions::ViolenceAction(int count) { // todo a faster algorithm for inser
         int i = 0;
         for (; i < count; ++i) {
             if (attackIdxList.size()-i <= 0) {
-                return;
+                break;
             }
 
             java::Collections::shuffle(attackIdxList.begin()+i, attackIdxList.end(), java::Random(bc.shuffleRng.randomLong()));
@@ -700,10 +701,14 @@ Action Actions::BetterDiscardPileToHandAction(int amount, CardSelectTask task) {
         if (bc.cards.discardPile.empty()) {
             return;
         }
-        if (bc.cards.discardPile.size() == 1) {
-            const int idx = 0;
-            bc.chooseDiscardToHandCard(0, task==CardSelectTask::LIQUID_MEMORIES_POTION);
+        if (bc.cards.discardPile.size() <= amount) {
+            for (int i = 0, count = bc.cards.discardPile.size(); i < count; ++i) {
+                bc.chooseDiscardToHandCard(0, task==CardSelectTask::LIQUID_MEMORIES_POTION);
+            }
         } else {
+            if (amount > 1) {
+                bc.addToTop( Actions::BetterDiscardPileToHandAction(amount-1, task) ); // the same grid in the game
+            }
             bc.openSimpleCardSelectScreen(task, 1);
         }
     }};
@@ -829,7 +834,7 @@ Action Actions::ForethoughtAction(bool upgraded) {
 //            bc.inputState = InputState::CARD_SELECT;
 //
 //        } else {
-        if (bc.cards.cardsInHand == 1) {
+        if (bc.cards.cardsInHand == 1 && !upgraded) {
             bc.chooseForethoughtCard(0);
         } else {
             bc.cardSelectInfo.cardSelectTask = CardSelectTask::FORETHOUGHT;
@@ -1008,6 +1013,9 @@ Action Actions::CodexAction() {
 
 Action Actions::ExhaustMany(int limit) {
     return {[=] (BattleContext &bc) {
+        if (bc.cards.cardsInHand == 0) {
+            return;
+        }
         bc.inputState = InputState::CARD_SELECT;
         bc.cardSelectInfo.cardSelectTask = CardSelectTask::EXHAUST_MANY;
         bc.cardSelectInfo.pickCount = limit;
@@ -1026,6 +1034,7 @@ Action Actions::ToolboxAction() {
         bc.inputState = InputState::CARD_SELECT;
         bc.cardSelectInfo.cardSelectTask = CardSelectTask::DISCOVERY;
         bc.cardSelectInfo.discovery_CopyCount() = 1;
+        bc.cardSelectInfo.discoveryIsFree = false;
         bc.cardSelectInfo.discovery_Cards() =
                 generateDiscoveryCards(bc.cardRandomRng, bc.player.cc, CardType::STATUS); // status is mapped to colorless
     }};
@@ -1090,7 +1099,6 @@ Action Actions::EnlightenmentAction(bool upgraded) {
                 c.costForTurn = 1;
             }
             if (upgraded && c.cost > 1) {
-                c.costForTurn = 1;
                 c.cost = 1;
             }
         }
@@ -1131,7 +1139,7 @@ Action Actions::FiendFireAction(int targetIdx, int calculatedDamage) {
         }
 
         for (int i = 0; i < bc.cards.cardsInHand; ++i) {
-            bc.addToTop( Actions::ExhaustRandomCardInHand(1) );
+            bc.addToTop( Actions::ExhaustRandomCardInHand(1, true) );
         }
     }};
 }
@@ -1142,7 +1150,7 @@ Action Actions::HandOfGreedAction(int idx, int damage, bool upgraded) {
         if (m.isDeadOrEscaped()) {
             return;
         }
-        bc.monsters.arr[idx].damage(bc, damage);
+        bc.monsters.arr[idx].attacked(bc, damage);
 
         const bool effectTriggered = !m.hasStatus<MS::MINION>()
                 && !m.isAlive()

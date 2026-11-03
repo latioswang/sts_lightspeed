@@ -45,6 +45,7 @@ namespace sts {
 
         // for spire spear/shield
         std::int8_t lastTargetedMonster = 1;
+        bool redSkullActive = false;
 
         // todo rework all of the power data structures...
         int block = 0;
@@ -86,9 +87,9 @@ namespace sts {
         int16_t lastAttackUnblockedDamage = 0;
         int16_t timesDamagedThisCombat = 0;
 
-        int8_t bomb1 = 0;
-        int8_t bomb2 = 0;
-        int8_t bomb3 = 0;
+        std::int16_t bomb1 = 0;
+        std::int16_t bomb2 = 0;
+        std::int16_t bomb3 = 0;
 
         template <RelicId r> void setHasRelic(bool value);
         template <PlayerStatus> void setHasStatus(bool value);
@@ -348,6 +349,10 @@ namespace sts {
 
         if (s == PS::COMBUST) {
             ++combustHpLoss;
+        }
+
+        if (s == PS::PANACHE && !hasStatus<s>()) {
+            panacheCounter = 5;
         }
 
         if (hasStatus<s>()) {

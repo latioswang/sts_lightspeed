@@ -8,6 +8,7 @@
 #include <combat/BattleContext.h>
 #include <combat/Actions.h>
 #include "combat/Player.h"
+#include "game/Game.h"
 
 using namespace sts;
 
@@ -162,12 +163,11 @@ void Player::heal(int amount) {
         amount = (amount * 3 + 1) / 2;  // MathUtils.round(amount * 1.5f)
     }
 
-    bool wasBloodied = curHp <= maxHp/2;
-
     curHp = std::min(static_cast<int>(maxHp), curHp + amount);
 
-    if (wasBloodied && curHp > maxHp/2 && hasRelic<RelicId::RED_SKULL>()) {
-        debuff<PS::STRENGTH>(3);
+    if (curHp > maxHp/2 && redSkullActive) {
+        debuff<PS::STRENGTH>(-3, false);
+        redSkullActive = false;
     }
 }
 
@@ -314,8 +314,9 @@ void Player::hpWasLost(BattleContext &bc, int amount, bool selfDamage) {
         bc.addToTop( Actions::DrawCards(1) );
     }
 
-    if (hasRelic<RelicId::RED_SKULL>() && !wasBloodied && curHp <= maxHp/2) {
+    if (hasRelic<RelicId::RED_SKULL>() && !redSkullActive && curHp <= maxHp/2) {
         buff<PS::STRENGTH>(3);
+        redSkullActive = true;
     }
 
     bc.cards.onTookDamage();
@@ -625,7 +626,9 @@ void Player::applyStartOfTurnPowers(BattleContext &bc) {
                 break;
 
             case PS::MAGNETISM:
-//                bc.addToBot( Actions::SetState(InputState::CREATE_RANDOM_CARD_IN_HAND_COLORLESS, pair.second) );
+                for (int i = 0; i < pair.second; ++i) {
+                    bc.addToBot( Actions::MakeTempCardInHand(sts::getTrulyRandomColorlessCardInCombat(bc.cardRandomRng)) );
+                }
                 break;
 
             case PS::MAYHEM:

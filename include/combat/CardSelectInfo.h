@@ -65,6 +65,7 @@ namespace sts {
         bool canPickAnyNumber = false;
         int pickCount = 0;
         int data0 = 0;
+        bool discoveryIsFree = true; // Toolbox shares the screen, but its card keeps its cost
 
         CardSelectTask cardSelectTask;
 

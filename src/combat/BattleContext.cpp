@@ -240,7 +240,7 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::BLOOD_VIAL:
-                p.heal(2); // todo not correct
+                p.heal(2);
                 break;
 
             case R::BRONZE_SCALES:
@@ -413,7 +413,7 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::GREMLIN_VISAGE:
-                p.debuff<PS::WEAK>(1);
+                p.debuff<PS::WEAK>(1, false);
                 break;
 
             case R::MARK_OF_PAIN:
@@ -441,8 +441,9 @@ void BattleContext::initRelics(const GameContext &gc) {
         addToBot( Actions::DamageAllEnemy(3) );
     }
 
-    if (gc.hasRelic(R::RED_SKULL) && gc.curHp <= gc.maxHp / 2) {
+    if (gc.hasRelic(R::RED_SKULL) && p.curHp <= p.maxHp / 2) { // after Blood Vial's heal
         p.buff<PS::STRENGTH>(3);
+        p.redSkullActive = true;
     }
 
     for (auto r : atTurnStartPostDraw) {
@@ -879,7 +880,7 @@ void BattleContext::playCardQueueItem(CardQueueItem playItem) {
             c.freeToPlayOnce = true;
         }
 
-        if (c.requiresTarget()) {
+        if (c.requiresTarget() && !item.autoplay) {
             player.lastTargetedMonster = item.target;
         }
 
@@ -891,6 +892,12 @@ void BattleContext::playCardQueueItem(CardQueueItem playItem) {
 
     if (!item.triggerOnUse) {
         useNoTriggerCard(); // for burn, decay, doubt, regret and shame,
+
+    } else if (!canUseCard && item.autoplay) {
+        // GameActionManager sends it straight to UseCardAction without triggers, so Havoc still exhausts it.
+        item.exhaustOnUse |= c.doesExhaust();
+        item.triggerOnUse = false;
+        addToBot(Actions::OnAfterCardUsed());
     }
 }
 
@@ -1666,6 +1673,7 @@ void BattleContext::onUseAttackCard() {
     }
 
     if (p.hasStatus<PS::PANACHE>() && --p.panacheCounter <= 0) {
+        p.panacheCounter = 5;
         addToBot( Actions::DamageAllEnemy(p.getStatus<PS::PANACHE>()) );
     }
 
@@ -1717,8 +1725,8 @@ void BattleContext::onUseAttackCard() {
         addToBot( Actions::BuffPlayer<PS::STRENGTH>(1) );
     }
 
-    if (p.hasRelic<R::NECRONOMICON>() && !p.haveUsedNecronomiconThisTurn && !item.freeToPlay && !item.purgeOnUse &&
-        (c.costForTurn >= 2 || c.isXCost() && item.energyOnUse >= 2)) {
+    if (p.hasRelic<R::NECRONOMICON>() && !p.haveUsedNecronomiconThisTurn &&
+        (c.costForTurn >= 2 && !c.freeToPlayOnce || c.isXCost() && item.energyOnUse >= 2)) {
         queuePurgeCard(c, item.target);
         p.haveUsedNecronomiconThisTurn = true;
     }
@@ -1796,6 +1804,7 @@ void BattleContext::onUseSkillCard() {
     }
 
     if (p.hasStatus<PS::PANACHE>() && --p.panacheCounter <= 0) {
+        p.panacheCounter = 5;
         addToBot( Actions::DamageAllEnemy(p.getStatus<PS::PANACHE>()) );
     }
 
@@ -1875,6 +1884,7 @@ void BattleContext::onUsePowerCard() {
     }
 
     if (p.hasStatus<PS::PANACHE>() && --p.panacheCounter <= 0) {
+        p.panacheCounter = 5;
         addToBot( Actions::DamageAllEnemy(p.getStatus<PS::PANACHE>()) );
     }
 
@@ -1940,6 +1950,7 @@ void BattleContext::onUseStatusOrCurseCard() {
     }
 
     if (p.hasStatus<PS::PANACHE>() && --p.panacheCounter <= 0) {
+        p.panacheCounter = 5;
         addToBot( Actions::DamageAllEnemy(p.getStatus<PS::PANACHE>()) );
     }
 
@@ -2127,6 +2138,9 @@ void BattleContext::callEndOfTurnActions() {
                 addToBotCard(item);
                 break;
             }
+            case CardId::PRIDE:
+                addToBot( Actions::MakeTempCardInDrawPile(CardInstance(CardId::PRIDE), 1, false) );
+                break;
             default:
                 break;
         }
@@ -2271,6 +2285,9 @@ void BattleContext::drinkPotion(int idx, int target) {
     const bool hasBark = player.hasRelic<R::SACRED_BARK>();
     const Potion p = potions[idx];
     discardPotion(idx);
+    if (potionRequiresTarget(p)) {
+        player.lastTargetedMonster = target;
+    }
     if (player.hasRelic<R::TOY_ORNITHOPTER>()) {  // FIX: relic had no implementation
         addToBot(Actions::HealPlayer(5));
     }
@@ -2924,6 +2941,7 @@ void BattleContext::openDiscoveryScreen(std::array<CardId, 3> discoveryCards, in
     cardSelectInfo.canPickZero = false;
     cardSelectInfo.cards = discoveryCards;
     cardSelectInfo.discovery_CopyCount() = copyCount;
+    cardSelectInfo.discoveryIsFree = true;
 }
 
 void BattleContext::openSimpleCardSelectScreen(CardSelectTask task, int count) {
@@ -3027,7 +3045,7 @@ void BattleContext::chooseDualWieldCard(int handIdx) {
 void BattleContext::chooseDiscardToHandCard(int discardIdx, bool forZeroCost) {
     CardInstance c = cards.discardPile[discardIdx];
     cards.removeFromDiscard(discardIdx);
-    if (cardSelectInfo.cardSelectTask == CardSelectTask::LIQUID_MEMORIES_POTION) {
+    if (forZeroCost) {
         c.setCostForTurn(0);
     }
     moveToHandHelper(c);
@@ -3036,7 +3054,9 @@ void BattleContext::chooseDiscardToHandCard(int discardIdx, bool forZeroCost) {
 void BattleContext::chooseDiscoveryCard(CardId id) {
     const auto discoveryAmount = cardSelectInfo.data0;
     CardInstance c(id);
-    c.setCostForTurn(0);
+    if (cardSelectInfo.discoveryIsFree) {
+        c.setCostForTurn(0);
+    }
 
     for (int i = 0; i < discoveryAmount; ++i) {
         if (cards.cardsInHand + 1 <= CardManager::MAX_HAND_SIZE) {
