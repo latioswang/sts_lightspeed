@@ -152,7 +152,7 @@ namespace sts {
 
         static constexpr bool disableColosseum = false;  // FIX: event is now implemented
         static constexpr bool disableMatchAndKeep = false;
-        static constexpr bool disablePrismaticShard = true;
+        static constexpr bool disablePrismaticShard = false;
         bool skipBattles = false;
 
         // ********* hidden from player *********
