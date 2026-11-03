@@ -569,7 +569,22 @@ void Monster::removeDebuffs() {
 
 void Monster::resetAllStatusEffects() {
     statusBits = 0;
-    setStatus<MS::STRENGTH>(0);
+    artifact = 0;
+    blockReturn = 0;
+    choked = 0;
+    corpseExplosion = 0;
+    lockOn = 0;
+    mark = 0;
+    metallicize = 0;
+    platedArmor = 0;
+    poison = 0;
+    regen = 0;
+    shackled = 0;
+    strength = 0;
+    vulnerable = 0;
+    weak = 0;
+    uniquePower0 = 0;
+    uniquePower1 = 0;
     block = 0;
 }
 
