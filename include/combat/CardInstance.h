@@ -66,6 +66,7 @@ namespace sts {
         void setUniqueId(int uniqueId);
         void upgrade();
         void tookDamage(); // only call this on "Masterful Stab" and "Blood for Blood"
+        void tookDamageTimes(int times); // makeCopy counts the fight's HP losses so far
 
         std::ostream& printSimpleDesc(std::ostream &o) const;
 

@@ -553,6 +553,10 @@ void BattleContext::exitBattle(GameContext &g) const {
 void BattleContext::updateRelicsOnExit(GameContext &g) const {
     // Victory relics heal while the room's phase is still COMBAT, so Magic Flower counts.
     const auto victoryHeal = [&g](int amount) { return g.hasRelic(RelicId::MAGIC_FLOWER) ? (amount * 3 + 1) / 2 : amount; };
+    // AbstractRoom.endBattle triggers it ahead of every other relic's onVictory, so Burning Blood can't lift the HP past half first.
+    if (outcome == Outcome::PLAYER_VICTORY && g.hasRelic(RelicId::MEAT_ON_THE_BONE) && g.curHp <= g.maxHp / 2) {
+        g.playerHeal(victoryHeal(12));
+    }
     for (auto &r : g.relics.relics) {
         switch (r.id) {
             case RelicId::ANCIENT_TEA_SET:
@@ -612,12 +616,6 @@ void BattleContext::updateRelicsOnExit(GameContext &g) const {
 
             case RelicId::BLACK_BLOOD:
                 if (outcome == Outcome::PLAYER_VICTORY) {
-                    g.playerHeal(victoryHeal(12));
-                }
-                break;
-
-            case RelicId::MEAT_ON_THE_BONE:
-                if (outcome == Outcome::PLAYER_VICTORY && g.curHp <= g.maxHp / 2) {
                     g.playerHeal(victoryHeal(12));
                 }
                 break;
@@ -1134,7 +1132,10 @@ void BattleContext::useAttackCard() {
         }
 
         case CardId::MIND_BLAST: {
-            const auto damage = calculateCardDamage(c, t, static_cast<int>(cards.drawPile.size()));
+            // PlayTopCardAction runs applyPowers as it takes the card, while the cards after it are still in the pile
+            const bool offTheTop = curCardQueueItem.autoplay && c.specialData > 0;
+            const auto baseDamage = offTheTop ? c.specialData - 1 : static_cast<int>(cards.drawPile.size());
+            const auto damage = calculateCardDamage(c, t, baseDamage);
             addToBot( Actions::AttackEnemy(t, damage) );
             break;
         }
@@ -2621,7 +2622,11 @@ void BattleContext::playTopCardInDrawPile(int monsterTargetIdx, bool exhausts) {
         return;
     }
 
-    CardQueueItem item(cards.popFromDrawPile(), monsterTargetIdx, player.energy);
+    auto top = cards.popFromDrawPile();
+    if (top.getId() == CardId::MIND_BLAST) {
+        top.specialData = static_cast<std::int16_t>(cards.drawPile.size() + 1);
+    }
+    CardQueueItem item(top, monsterTargetIdx, player.energy);
     item.exhaustOnUse = exhausts;
     item.autoplay = true;
     item.freeToPlay = true; // todo remove the autoplay boolean? added this instead
@@ -2921,8 +2926,9 @@ void BattleContext::triggerAndMoveToExhaustPile(CardInstance c) {
     }
 
     if (player.hasRelic<R::DEAD_BRANCH>()){
-        CardId id = getTrulyRandomCardInCombat(cardRandomRng, player.cc);
-        addToBot(Actions::MakeTempCardInHand(id));
+        CardInstance c(getTrulyRandomCardInCombat(cardRandomRng, player.cc));
+        c.tookDamageTimes(player.timesDamagedThisCombat);
+        addToBot(Actions::MakeTempCardInHand(c));
     }
 
     if (player.hasStatus<PS::DARK_EMBRACE>()) {
@@ -3097,6 +3103,7 @@ void BattleContext::chooseDiscardToHandCard(int discardIdx, bool forZeroCost) {
 void BattleContext::chooseDiscoveryCard(CardId id) {
     const auto discoveryAmount = cardSelectInfo.data0;
     CardInstance c(id);
+    c.tookDamageTimes(player.timesDamagedThisCombat);
     if (cardSelectInfo.discoveryIsFree) {
         c.setCostForTurn(0);
     }

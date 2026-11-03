@@ -172,6 +172,12 @@ void CardInstance::upgrade() {
     }
 }
 
+void CardInstance::tookDamageTimes(int times) {
+    for (int i = 0; i < times && isBloodCard(); ++i) {
+        tookDamage();
+    }
+}
+
 void CardInstance::tookDamage() {
     if (getId() == CardId::BLOOD_FOR_BLOOD) {
         updateCost(-1);

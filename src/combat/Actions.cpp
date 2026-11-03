@@ -608,6 +608,7 @@ Action Actions::InfernalBladeAction() {
     return {[=] (BattleContext &bc) {
         const auto cid = getTrulyRandomCardInCombat(bc.cardRandomRng, bc.player.cc, CardType::ATTACK);
         CardInstance c(cid);
+        c.tookDamageTimes(bc.player.timesDamagedThisCombat);
         c.setCostForTurn(0);
         bc.addToTop( Actions::MakeTempCardInHand(c) );
     }};
