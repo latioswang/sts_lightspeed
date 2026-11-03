@@ -263,6 +263,12 @@ void Player::loseHp(BattleContext &bc, int amount, bool selfDamage) {
         amount = 1;
     }
 
+    // HP loss skips block, but BufferPower.onAttackedToChangeDamage still stops it.
+    if (amount > 0 && hasStatus<PS::BUFFER>()) {
+        decrementStatus<PS::BUFFER>();
+        return;
+    }
+
     if (amount > 0 && hasRelic<RelicId::TUNGSTEN_ROD>()) {
         amount -= 1;
         if (amount == 0) {
