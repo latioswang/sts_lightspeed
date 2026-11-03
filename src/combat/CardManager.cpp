@@ -113,6 +113,7 @@ void CardManager::createTempCardInDiscard(CardInstance c) {
     notifyAddCardToCombat(c);
     notifyAddToDiscardPile(c);
     discardPile.push_back(c);
+    discardPile.back().setCostForTurn(c.cost); // Soul.update runs clearPowers when the card lands
 }
 
 void CardManager::createTempCardInHand(CardInstance c) {
@@ -210,6 +211,7 @@ void CardManager::moveToDrawPileTop(const CardInstance &c) {
 #endif
     notifyAddToDrawPile(c);
     drawPile.push_back(c);
+    drawPile.back().setCostForTurn(c.cost); // so does a card landing on the draw pile
 }
 
 void CardManager::shuffleIntoDrawPile(Random &cardRandomRng, const CardInstance &c) {
@@ -233,6 +235,7 @@ void CardManager::moveToDiscardPile(const CardInstance &c) {
 #endif
     notifyAddToDiscardPile(c);
     discardPile.push_back(c);
+    discardPile.back().setCostForTurn(c.cost); // Soul.update runs clearPowers when the card lands
 }
 
 void CardManager::moveDiscardPileIntoToDrawPile() {
