@@ -2989,20 +2989,20 @@ void GameContext::chooseEventOption(int idx) {
         case Event::KNOWING_SKULL: {
             switch (idx) {
                 case 0:
-                    playerLoseHp(info.hpAmount0++);
-                    obtainGold(90);
-                    break;
-
-                case 1:
-                    playerLoseHp(info.hpAmount1++);
-                    deck.obtain(*this, returnColorlessCard(CardRarity::UNCOMMON));
-                    break;
-
-                case 2:
                     playerLoseHp(info.hpAmount2++);
                     if (!relics.has(RelicId::SOZU)) {
                         obtainPotion(getRandomPotion(potionRng, cc));
                     }
+                    break;
+
+                case 1:
+                    playerLoseHp(info.hpAmount0++);
+                    obtainGold(90);
+                    break;
+
+                case 2:
+                    playerLoseHp(info.hpAmount1++);
+                    deck.obtain(*this, returnColorlessCard(CardRarity::UNCOMMON));
                     break;
 
                 case 3:
