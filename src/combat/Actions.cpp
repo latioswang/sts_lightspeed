@@ -382,7 +382,8 @@ Action Actions::ExhaustRandomCardInHand(int count) {
             if (bc.cards.cardsInHand <= 0) {
                 return;
             }
-            const auto idx = bc.cards.getRandomCardIdxInHand(bc.cardRandomRng);
+            // ExhaustAction takes from the top without rolling when the hand has no more cards than it needs.
+            const auto idx = bc.cards.cardsInHand <= count - i ? bc.cards.cardsInHand - 1 : bc.cards.getRandomCardIdxInHand(bc.cardRandomRng);
             auto c = bc.cards.hand[idx];
             bc.cards.removeFromHandAtIdx(idx);
             bc.triggerAndMoveToExhaustPile(c);
