@@ -2617,6 +2617,7 @@ void BattleContext::playTopCardInDrawPile(int monsterTargetIdx, bool exhausts) {
     if (cards.drawPile.empty()) {
         if (!cards.discardPile.empty()) {
             addToTop( Actions::PlayTopCard(monsterTargetIdx, exhausts) );
+            onShuffle();
             addToTop( Actions::EmptyDeckShuffle() );
         }
         return;
