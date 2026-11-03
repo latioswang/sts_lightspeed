@@ -132,7 +132,7 @@ void Shop::buyRelic(GameContext &gc, int idx) {
         applyDiscount(MEMBERSHIP_CARD_FACTOR);
         removeCost = static_cast<int>(std::round(static_cast<float>(removeCost) * MEMBERSHIP_CARD_FACTOR));
     }
-    if (r == RelicId::SMILING_MASK && removeCost != -1) {
+    if ((r == RelicId::SMILING_MASK || gc.hasRelic(RelicId::SMILING_MASK)) && removeCost != -1) {
         removeCost = SMILING_MASK_PRICE;
     }
 
@@ -229,7 +229,7 @@ int Shop::getNewPrice(GameContext &gc, int basePrice) {
 int Shop::getRemoveCost(const GameContext &gc) {
     int cost;
     if (gc.hasRelic(RelicId::SMILING_MASK)) {
-        cost = SMILING_MASK_PRICE;
+        return SMILING_MASK_PRICE; // ShopScreen.applyDiscount leaves it at this price under every discount
     } else {
         cost = BASE_REMOVE_PRICE+(REMOVE_PRICE_INCREASE*gc.shopRemoveCount);
     }
