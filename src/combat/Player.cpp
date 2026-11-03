@@ -354,6 +354,14 @@ void Player::wouldDie(BattleContext &bc) {
 }
 
 void Player::applyEndOfTurnPowers(BattleContext &bc) {
+    // Powers trigger in the order they were gained. This pair shows: Combust's HP loss draws (Runic Cube, Centennial
+    // Puzzle) only if No Draw has already gone.
+    const bool noDrawGoesFirst = noDrawBeforeCombust && hasStatus<PS::NO_DRAW>();
+    noDrawBeforeCombust = false;
+    if (noDrawGoesFirst) {
+        bc.addToBot(Actions::RemoveStatus<PS::NO_DRAW>());
+    }
+
     if (bomb1) {
         bc.addToBot( Actions::DamageAllEnemy(bomb1) );
     }
@@ -441,9 +449,7 @@ void Player::applyEndOfTurnPowers(BattleContext &bc) {
         }
     }
 
-    // Powers trigger in the order they were gained, which this map doesn't keep. No Draw usually comes last, from a card
-    // played this turn, so Combust's HP loss doesn't get a Runic Cube draw.
-    if (hasStatus<PS::NO_DRAW>()) {
+    if (hasStatus<PS::NO_DRAW>() && !noDrawGoesFirst) {
         bc.addToBot(Actions::RemoveStatus<PS::NO_DRAW>());
     }
 }

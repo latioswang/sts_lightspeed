@@ -712,7 +712,8 @@ void BattleContext::addToBotCard(CardQueueItem item) {
 }
 
 void BattleContext::checkCombat() {
-    if (outcome == Outcome::PLAYER_VICTORY) {
+    // a minion leader's death ends the fight, but its minions only die in actions to come, so the game keeps the queue
+    if (outcome == Outcome::PLAYER_VICTORY && monsters.areMonstersBasicallyDead()) {
         clearPostCombatActions();
     }
 }
@@ -1593,6 +1594,9 @@ void BattleContext::usePowerCard() {
             break;
 
         case CardId::COMBUST:
+            if (player.hasStatus<PS::NO_DRAW>() && !player.hasStatus<PS::COMBUST>()) {
+                player.noDrawBeforeCombust = true;
+            }
             addToBot( Actions::BuffPlayer<PS::COMBUST>(up ? 7 : 5) );
             break;
 
@@ -2488,6 +2492,9 @@ void BattleContext::drinkPotion(int idx, int target) {
                 miscBits.set(1);  // escaped flag, read by exitBattle
                 cardQueue.clear();
                 actionQueue.clear();
+                if (player.hasRelic<R::TOY_ORNITHOPTER>()) {  // the game's queue still runs its heal
+                    player.heal(5);
+                }
                 outcome = Outcome::PLAYER_VICTORY;
             }
             break;
