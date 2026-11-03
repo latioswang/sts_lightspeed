@@ -880,11 +880,14 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             break;
 
         case MMID::LAGAVULIN_SLEEP:
-            if (bc.turn == 2 || !hasStatus<MS::ASLEEP>()) {
+            if (bc.turn == 2 && hasStatus<MS::ASLEEP>()) {
+                // The third idle turn wakes it with a SetMoveAction, so this one rolls nothing.
+                setHasStatus<MS::ASLEEP>(false);
+                decrementStatus<MS::METALLICIZE>(8);
                 setMove(MMID::LAGAVULIN_ATTACK);
-            } else {
-                setMove(MMID::LAGAVULIN_SLEEP);
+                break;
             }
+            setMove(hasStatus<MS::ASLEEP>() ? MMID::LAGAVULIN_SLEEP : MMID::LAGAVULIN_ATTACK);
             bc.noOpRollMove();
             break;
 
