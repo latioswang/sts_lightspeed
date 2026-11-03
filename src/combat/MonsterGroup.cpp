@@ -11,7 +11,14 @@
 using namespace sts;
 
 bool MonsterGroup::areMonstersBasicallyDead() const {
-    return monstersAlive <= 0;
+    for (int i = 0; i < monsterCount; ++i) {
+        const Monster &m = arr[i];
+        // a half dead monster's hp is 0, but in game it isn't dying
+        if ((!m.isDying() || m.isHalfDead()) && !m.isEscaping()) {
+            return false;
+        }
+    }
+    return true;
 }
 
 int MonsterGroup::getTargetableCount() const {
