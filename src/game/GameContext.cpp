@@ -3278,6 +3278,7 @@ void GameContext::chooseEventOption(int idx) {
                 playerLoseHp(10);
             }
 
+            miscRng.randomLong();  // getRandomMemory shuffles the page's text with this stream
             Rewards reward;
             for (int i = 0; i <= idx; ++i) {
                 reward.addCardReward(createColorlessCardReward());

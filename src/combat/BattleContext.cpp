@@ -90,6 +90,8 @@ void BattleContext::initRelics(const GameContext &gc) {
     // The relics below check the room's eliteTrigger. Dead Adventurer's fight and Colosseum's second fight set it too.
     const bool eliteTrigger = room == Room::ELITE
             || (room == Room::EVENT && (gc.curEvent == Event::DEAD_ADVENTURER || encounter == MonsterEncounter::COLOSSEUM_EVENT_NOBS));
+    // These check for a monster of type BOSS, not the room, and Mind Bloom's fight is against one.
+    const bool bossMonster = room == Room::BOSS || (room == Room::EVENT && gc.curEvent == Event::MINDBLOOM);
 
     auto &p = player;
 
@@ -314,7 +316,7 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::PANTOGRAPH:
-                if (room == Room::BOSS) {
+                if (bossMonster) {
                     p.heal(25);
                 }
                 break;
@@ -338,7 +340,7 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::SLAVERS_COLLAR:
-                if (eliteTrigger || room == Room::BOSS) {
+                if (eliteTrigger || bossMonster) {
                     p.energyPerTurn++;
                 }
                 break;
@@ -1554,6 +1556,8 @@ void BattleContext::usePowerCard() {
             break;
 
         case CardId::CORRUPTION:
+            // ApplyPowerAction's constructor changes the costs, so Mummified Hand, which runs after use, already sees them.
+            cards.onBuffCorruption();
             addToBot( Actions::BuffPlayer<PS::CORRUPTION>() );
             break;
 
