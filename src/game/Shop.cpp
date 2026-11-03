@@ -15,7 +15,7 @@ void Shop::setup(GameContext &gc) {
     setupPotions(gc);
 
     if (gc.ascension >= 16) {
-        applyDiscount(0.80f);
+        applyDiscount(1.10f);
     }
     if (gc.hasRelic(RelicId::THE_COURIER)) {
         applyDiscount(0.80f);
