@@ -135,7 +135,6 @@ namespace sts {
         static Action PutRandomCardsInDrawPile(CardType type, int count); // used by chrysalis and metamorphosis
         static Action DiscoveryAction(CardType type, int amount); // attack potion, skill potion
         static Action InfernalBladeAction();
-        static Action JackOfAllTradesAction(bool upgraded);
         static Action TransmutationAction(bool upgraded, int energy, bool useEnergy);
         static Action ViolenceAction(int count);
 
@@ -165,7 +164,7 @@ namespace sts {
         static Action DualityAction(); // Duality Relic
 
         static Action ApotheosisAction();
-        static Action DropkickAction(int targetIdx);
+        static Action DropkickAction(int targetIdx, int damage);
         static Action EnlightenmentAction(bool upgraded);
         static Action EntrenchAction();
         static Action FeedAction(int idx, int damage, bool upgraded);

@@ -36,6 +36,7 @@ void BattleContext::init(const GameContext &gc, MonsterEncounter encounterToInit
         monsterHpRng = gc.monsterHpRng;
         shuffleRng = gc.shuffleRng;
         cardRandomRng = gc.cardRandomRng;
+        shuffleRng.randomLong(); // Colosseum.reopen calls preBattlePrep, which shuffles a deck nothing uses
     }
     miscRng = gc.miscRng;
     potionRng = gc.potionRng;
@@ -1070,7 +1071,7 @@ void BattleContext::useAttackCard() {
         }
 
         case CardId::DROPKICK:
-            addToBot( Actions::DropkickAction(t) );
+            addToBot( Actions::DropkickAction(t, calculateCardDamage(c, t, up ? 8 : 5)) );
             break;
 
         case CardId::FEED:
@@ -1409,8 +1410,11 @@ void BattleContext::useSkillCard() {
             addToBot( Actions::DebuffAllEnemy<MS::WEAK>(up ? 2 : 1, false) ); // game justs adds one for each enemy in order
             break;
 
-        case CardId::JACK_OF_ALL_TRADES: // the game decides the random cards here and adds maketempcardtobot
-            addToBot( Actions::JackOfAllTradesAction(up) );
+        case CardId::JACK_OF_ALL_TRADES: // the game decides the random cards here and adds a MakeTempCard for each
+            addToBot( Actions::MakeTempCardInHand(getTrulyRandomColorlessCardInCombat(cardRandomRng)) );
+            if (up) {
+                addToBot( Actions::MakeTempCardInHand(getTrulyRandomColorlessCardInCombat(cardRandomRng)) );
+            }
             break;
 
         case CardId::JAX:

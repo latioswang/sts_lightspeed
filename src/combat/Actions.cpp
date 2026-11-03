@@ -613,17 +613,6 @@ Action Actions::InfernalBladeAction() {
     }};
 }
 
-Action Actions::JackOfAllTradesAction(bool upgraded) {
-    return {[=] (BattleContext &bc) {
-        const auto c1 = sts::getTrulyRandomColorlessCardInCombat(bc.cardRandomRng);
-        bc.addToTop( Actions::MakeTempCardInHand(c1) );
-        if (upgraded) {
-            auto c2 = sts::getTrulyRandomColorlessCardInCombat(bc.cardRandomRng);
-            bc.addToTop( Actions::MakeTempCardInHand(c2) );
-        }
-    }};
-}
-
 Action Actions::TransmutationAction(bool upgraded, int energy, bool useEnergy) {
     return {[=] (BattleContext &bc) {
         const auto effectAmount = energy + (bc.player.hasRelic<R::CHEMICAL_X>() ? 2 : 0);
@@ -1078,16 +1067,13 @@ Action Actions::ApotheosisAction() {
     }};
 }
 
-Action Actions::DropkickAction(int targetIdx) {
-    // assume bc.curCard is the card being used
+Action Actions::DropkickAction(int targetIdx, int damage) {
     return {[=](BattleContext &bc) {
         if (bc.monsters.arr[targetIdx].isTargetable() && bc.monsters.arr[targetIdx].hasStatus<MS::VULNERABLE>()) {
             bc.addToTop(Actions::DrawCards(1));
             bc.addToTop(Actions::GainEnergy(1));
         }
 
-        const auto &c = bc.curCardQueueItem.card;
-        const int damage = bc.calculateCardDamage(c, targetIdx, c.isUpgraded() ? 8 : 5);
         bc.addToTop(Actions::AttackEnemy(targetIdx, damage));
     }};
 }
