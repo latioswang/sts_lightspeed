@@ -430,7 +430,11 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
 
         case MMID::ROMEO_CROSS_SLASH:
             attackPlayerHelper(bc, asc2 ? 17 : 15);
-            setMove(MMID::ROMEO_AGONIZING_SLASH);
+            if (asc17 && !lastTwoMoves(MMID::ROMEO_CROSS_SLASH)) {
+                setMove(MMID::ROMEO_CROSS_SLASH);
+            } else {
+                setMove(MMID::ROMEO_AGONIZING_SLASH);
+            }
             break;
 
         case MMID::ROMEO_MOCK: // 2
@@ -471,13 +475,13 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
         case MMID::BRONZE_AUTOMATON_BOOST: {// 5
             buff<MS::STRENGTH>(asc4 ? 4 : 3);
             addBlock(asc9 ? 12 : 9);
-            auto &lastBoostWasFlail = miscInfo;
-            if (lastBoostWasFlail) {
+            auto &boostsBeforeBeam = miscInfo; // the second Boost leads to Hyper Beam; at A19 Hyper Beam sets this to -1, so the third does
+            if (boostsBeforeBeam > 0) {
                 setMove(MMID::BRONZE_AUTOMATON_HYPER_BEAM);
-                lastBoostWasFlail = false;
+                boostsBeforeBeam = 0;
             } else {
                 setMove(MMID::BRONZE_AUTOMATON_FLAIL);
-                lastBoostWasFlail = true;
+                ++boostsBeforeBeam;
             }
             bc.noOpRollMove();
             break;
@@ -492,6 +496,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
         case MMID::BRONZE_AUTOMATON_HYPER_BEAM: // 2
             attackPlayerHelper(bc, asc4 ? 50 : 45);
             if (asc19) {
+                miscInfo = -1;
                 setMove(MMID::BRONZE_AUTOMATON_BOOST);
             } else {
                 setMove(MMID::BRONZE_AUTOMATON_STUNNED);
@@ -712,7 +717,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
                 auto &minion = bc.monsters.arr[i];
                 if (!minion.isDying()) {
                     minion.buff<MS::STRENGTH>(strGain);
-                    minion.addBlock(asc3 ? 10 : 6);
+                    minion.addBlock(asc18 ? 10 : 6);
                 }
             }
             buff<MS::STRENGTH>(strGain);
@@ -1130,10 +1135,10 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
 
         case MMID::SNECKO_TAIL_WHIP: // 3
             attackPlayerHelper(bc, asc2 ? 10 : 8);
-            bc.addToBot( Actions::DebuffPlayer<PS::VULNERABLE>(2, true) );
             if (asc17) {
                 bc.addToBot( Actions::DebuffPlayer<PS::WEAK>(2, true) );
             }
+            bc.addToBot( Actions::DebuffPlayer<PS::VULNERABLE>(2, true) );
             bc.addToBot( Actions::RollMove(idx) );
             break;
 
@@ -1285,7 +1290,6 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
 
         case MMID::THE_COLLECTOR_BUFF: { //3
             const int strAmounts[3] {3, 4, 5};
-            const int blockAmounts[3] {15, 18, 23};
 
             for (int i = 0; i < 2; ++i) {
                 auto &torchHead = bc.monsters.arr[i];
@@ -1294,7 +1298,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
                 }
             }
             buff<MS::STRENGTH>(strAmounts[bossDiffIdx]);
-            addBlock(blockAmounts[bossDiffIdx]);
+            addBlock(asc19 ? 23 : (asc9 ? 18 : 15));
 
             bc.addToBot(Actions::RollMove(idx));
             break;
@@ -1306,9 +1310,9 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             break;
 
         case MMID::THE_COLLECTOR_MEGA_DEBUFF: // 4
-            bc.addToBot( Actions::DebuffPlayer<PS::WEAK>(3, true) );
-            bc.addToBot( Actions::DebuffPlayer<PS::VULNERABLE>(3, true) );
-            bc.addToBot( Actions::DebuffPlayer<PS::FRAIL>(3, true) );
+            bc.addToBot( Actions::DebuffPlayer<PS::WEAK>(asc19 ? 5 : 3, true) );
+            bc.addToBot( Actions::DebuffPlayer<PS::VULNERABLE>(asc19 ? 5 : 3, true) );
+            bc.addToBot( Actions::DebuffPlayer<PS::FRAIL>(asc19 ? 5 : 3, true) );
             bc.addToBot( Actions::RollMove(idx) );
             break;
 
@@ -1448,8 +1452,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             break;
 
         case MMID::DARKLING_NIP: {
-            const auto damage = miscInfo + (asc2 ? 2 : 0); // todo maybe make d part of the miscInfo at prebattle
-            attackPlayerHelper(bc, damage);
+            attackPlayerHelper(bc, miscInfo);
             bc.addToBot( Actions::RollMove(idx) );
             break;
         }
@@ -1550,7 +1553,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             break;
 
         case MMID::GIANT_HEAD_IT_IS_TIME: { // 2
-            const auto t = std::min(bc.getMonsterTurnNumber()-5, 6) * 5;
+            const auto t = std::min(bc.getMonsterTurnNumber() - (asc18 ? 4 : 5), 6) * 5;
             const auto damage = (asc3 ? 40 : 30) + t;
             attackPlayerHelper(bc, damage); // todo this can be done immediately
             bc.noOpRollMove();
@@ -1566,7 +1569,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             break;
 
         case MMID::NEMESIS_DEBUFF:
-            Actions::MakeTempCardInDiscard({CardId::BURN}, asc3 ? 5 : 3).actFunc(bc);
+            Actions::MakeTempCardInDiscard({CardId::BURN}, asc18 ? 5 : 3).actFunc(bc);
             rollMove(bc);
             if (!hasStatus<MS::INTANGIBLE>()) {
                 buff<MS::INTANGIBLE>(2);
@@ -1636,8 +1639,8 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
 
         case MMID::TIME_EATER_RIPPLE: // 3
             addBlock(20);
-            bc.player.debuff<PS::WEAK>(1, true);
             bc.player.debuff<PS::VULNERABLE>(1, true);
+            bc.player.debuff<PS::WEAK>(1, true);
             if (asc19) {
                 bc.player.debuff<PS::FRAIL>(1, true);
             }
@@ -1982,7 +1985,7 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
 
             if (asc17) {
                 if (roll < 40) {
-                    if (lastTwoMoves(MMID::ACID_SLIME_M_CORROSIVE_SPIT)) {
+                    if (lastTwoMoves(MMID::ACID_SLIME_L_CORROSIVE_SPIT)) {
                         if (bc.aiRng.randomBoolean(0.6F)) {
                             return (MMID::ACID_SLIME_L_TACKLE);
                         } else {
@@ -2048,8 +2051,7 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
             if (roll >= 40 && !lastTwoMoves(MMID::BLUE_SLAVER_STAB)) {
                 return (MMID::BLUE_SLAVER_STAB);
 
-            } else if ( !lastTwoMoves(MMID::BLUE_SLAVER_RAKE) ||
-                (asc17 && !lastMove(MMID::BLUE_SLAVER_RAKE)) ) {
+            } else if (asc17 ? !lastMove(MMID::BLUE_SLAVER_RAKE) : !lastTwoMoves(MMID::BLUE_SLAVER_RAKE)) {
                 return (MMID::BLUE_SLAVER_RAKE);
 
             } else {
@@ -2266,16 +2268,16 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
                     ++stabCount;
                     return (MMID::BOOK_OF_STABBING_MULTI_STAB);
                 } else {
-                    return (MMID::BOOK_OF_STABBING_SINGLE_STAB);
                     if (asc18) {
                         ++stabCount;
                     }
+                    return (MMID::BOOK_OF_STABBING_SINGLE_STAB);
                 }
             } else if (lastTwoMoves(MMID::BOOK_OF_STABBING_MULTI_STAB)) {
-                return (MMID::BOOK_OF_STABBING_SINGLE_STAB);
                 if (asc18) {
                     ++stabCount;
                 }
+                return (MMID::BOOK_OF_STABBING_SINGLE_STAB);
             } else {
                 ++stabCount;
                 return (MMID::BOOK_OF_STABBING_MULTI_STAB);
@@ -2419,8 +2421,8 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
             }
 
             if (asc18) {
-                if (!lastTwoMoves(MMID::GREMLIN_NOB_SKULL_BASH)) {
-                    return (MMID::GREMLIN_NOB_RUSH);
+                if (!lastMove(MMID::GREMLIN_NOB_SKULL_BASH) && !lastMoveBefore(MMID::GREMLIN_NOB_SKULL_BASH)) {
+                    return (MMID::GREMLIN_NOB_SKULL_BASH);
                     break;
                 }
 
@@ -2730,10 +2732,10 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
                     } else {
                         return (MMID::SNAKE_PLANT_CHOMP);
                     }
-                } else if (!lastTwoMoves(MMID::SNAKE_PLANT_ENFEEBLING_SPORES)) {
-                    return (MMID::SNAKE_PLANT_ENFEEBLING_SPORES);
-                } else {
+                } else if (lastMove(MMID::SNAKE_PLANT_ENFEEBLING_SPORES) || lastMoveBefore(MMID::SNAKE_PLANT_ENFEEBLING_SPORES)) {
                     return (MMID::SNAKE_PLANT_CHOMP);
+                } else {
+                    return (MMID::SNAKE_PLANT_ENFEEBLING_SPORES);
                 }
                 break;
             }
@@ -3168,7 +3170,7 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
             // 1 glare
             // 2 it is time
             // 3 count
-            if (bc.getMonsterTurnNumber() >= 4) {
+            if (bc.getMonsterTurnNumber() >= (asc18 ? 3 : 4)) {
                 return MMID::GIANT_HEAD_IT_IS_TIME;
             }
 
