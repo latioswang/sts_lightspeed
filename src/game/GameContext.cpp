@@ -1322,6 +1322,7 @@ bool GameContext::obtainRelic(RelicId r) {
             for (int i = 0; i < 5; ++i) {
                 pReward[i] = getRandomPotion(potionRng, cc);
             }
+            createCardReward(curRoom); // CombatRewardScreen.open rolls one, and the relic takes it back out
             openCombatRewardScreen({pReward, 5});
             opensScreen = true;
             break;
@@ -1356,6 +1357,7 @@ bool GameContext::obtainRelic(RelicId r) {
 
         case RelicId::CALLING_BELL: {
             deck.obtain(*this, CardId::CURSE_OF_THE_BELL);
+            createCardReward(curRoom); // CombatRewardScreen.open rolls one, and the relic clears the screen after
             Rewards reward;
             reward.addRelic(returnRandomScreenlessRelic(RelicTier::COMMON));
             reward.addRelic(returnRandomScreenlessRelic(RelicTier::UNCOMMON));
@@ -1737,13 +1739,7 @@ int GameContext::getRandomPlayerNonBasicCardIdx() {
 
     java::Collections::shuffle(cardIdxs.begin(), cardIdxs.end(), java::Random(miscRng.randomLong()));
 
-    int retIdx = cardIdxs[0];
-    for (int i = 0; i < retIdx; ++i) {
-        if (deck.cards[i] == deck.cards[retIdx]) {
-            return i;
-        }
-    }
-    return retIdx;
+    return cardIdxs[0];
 }
 
 MonsterEncounter GameContext::getMonsterForRoomCreation() {
@@ -2742,9 +2738,9 @@ void GameContext::chooseEventOption(int idx) {
 
                 case 3:
                     loseGold(unfavorable ? 75 : 60);
-                    deck.transformRandomCards(miscRng, 2); // TODO
-                    regainControl();
-                    break;  // FIX: fell through into case 4
+                    info.transformRng = MISC_RNG;
+                    openCardSelectScreen(CardSelectScreenType::TRANSFORM, 2);
+                    break;
 
                 case 4:
                     loseGold(unfavorable ? 110 : 90);
@@ -3002,7 +2998,9 @@ void GameContext::chooseEventOption(int idx) {
 
                 case 2:
                     playerLoseHp(info.hpAmount2++);
-                    obtainPotion(getRandomPotion(potionRng, cc));
+                    if (!relics.has(RelicId::SOZU)) {
+                        obtainPotion(getRandomPotion(potionRng, cc));
+                    }
                     break;
 
                 case 3:

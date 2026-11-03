@@ -223,7 +223,7 @@ bool isValidRewardsAction(const GameContext &gc, const search::GameAction a) {
             return r.sapphireKey || r.emeraldKey;
 
         case search::GameAction::RewardsActionType::POTION:
-            return a.getIdx1() < r.potionCount;
+            return a.getIdx1() < r.potionCount && (gc.potionCount < gc.potionCapacity || gc.hasRelic(RelicId::SOZU));
 
         case search::GameAction::RewardsActionType::GOLD:
             return a.getIdx1() < r.goldRewardCount;
