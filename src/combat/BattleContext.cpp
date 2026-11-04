@@ -494,8 +494,13 @@ void BattleContext::initRelics(const GameContext &gc) {
         }
     }
 
-    // ** OnStartOfTurn ** ORBS todo
-    //RelicCables -> OnStartOfTurn again for orb 0
+    // applyStartOfTurnOrbs: orbs channeled in atPreBattle are there for the first turn, so Nuclear Battery's Plasma gives energy.
+    for (int i = 0; i < p.orbSlots; ++i) {
+        p.orbOnStartOfTurn(*this, i);
+    }
+    if (p.hasRelic<R::GOLD_PLATED_CABLES>() && p.hasOrb()) {
+        p.orbOnStartOfTurn(*this, 0);
+    }
 }
 
 void BattleContext::exitBattle(GameContext &g) const {
@@ -4145,16 +4150,29 @@ void BattleContext::onManualDiscard(const CardInstance &c) {
     }
 }
 
-void BattleContext::discardFromHand(int handIdx, int flyingFrom) {
+void BattleContext::discardFromHand(int handIdx, int flyingFrom, bool relicsFirst) {
     const int firstFlying = flyingFrom < 0 ? static_cast<int>(cards.discardPile.size()) : flyingFrom;
     const CardInstance c = cards.hand[handIdx];
     cards.removeFromHandAtIdx(handIdx);
     cards.moveToDiscardPile(c);
     cards.onCardDrawOrDiscard(*this);
-    onManualDiscard(c);
+    if (!relicsFirst) {
+        onManualDiscard(c);
+    }
 
     ++player.cardsDiscardedThisTurn;
     if (!turnHasEnded) { // AbstractPlayer.updateCardsOnDiscard: only Eviscerate does anything with it
+        if (player.hasRelic<R::HOVERING_KITE>() && !player.kiteTriggeredThisTurn) {
+            player.kiteTriggeredThisTurn = true;
+            addToBot( Actions::GainEnergy(1) );
+        }
+        if (player.hasRelic<R::TINGSHA>()) {
+            addToBot( Actions::DamageRandomEnemy(3) );
+        }
+        if (player.hasRelic<R::TOUGH_BANDAGES>()) {
+            addToBot( Actions::GainBlock(3) );
+        }
+
         auto didDiscard = [] (CardInstance &card) {
             if (card.getId() == CardId::EVISCERATE) {
                 card.setCostForTurn(card.costForTurn - 1);
@@ -4169,6 +4187,10 @@ void BattleContext::discardFromHand(int handIdx, int flyingFrom) {
         for (auto &card : cards.drawPile) {
             didDiscard(card);
         }
+    }
+
+    if (relicsFirst) {
+        onManualDiscard(c);
     }
 }
 
@@ -4543,7 +4565,7 @@ void BattleContext::chooseGambleCards(const fixed_list<int, 10> &idxs) {
     // assume idxs is sorted in descending order
     addToTop( Actions::DrawCards(listCopy.size()) );
     for (const auto handIdx : listCopy) {
-        discardFromHand(handIdx);
+        discardFromHand(handIdx, -1, true); // GamblingChipAction counts the discard before the card's own trigger
     }
 }
 

@@ -100,6 +100,8 @@ namespace sts {
         int8_t  penNibCounter = 0;
         int8_t  sundialCounter = 0;
         bool haveUsedNecronomiconThisTurn = false;
+        bool kiteTriggeredThisTurn = false; // HoveringKite.triggeredThisTurn
+        bool emotionChipPulse = false; // EmotionChip.pulse: HP was lost since the last turn started
 
         int8_t  combustHpLoss = 0;
         bool noDrawBeforeCombust = false; // powers act in the order gained, which statusMap doesn't keep

@@ -204,7 +204,7 @@ namespace sts {
         void onManualDiscard(const CardInstance &c);
         // CardGroup.moveToDiscardPile, triggerOnManualDiscard and GameActionManager.incrementDiscard. Cards in the discard pile from
         // flyingFrom on, by default just this one, left with this action and land after it: they miss Eviscerate's discount.
-        void discardFromHand(int handIdx, int flyingFrom=-1);
+        void discardFromHand(int handIdx, int flyingFrom=-1, bool relicsFirst=false); // relicsFirst: GameActionManager.incrementDiscard runs before the card's own trigger
         [[nodiscard]] DamageMatrix calculateMultiDamage(const CardInstance &card, int baseDamage) const; // AbstractCard.multiDamage
         void onShuffle();
         void triggerAndMoveToExhaustPile(CardInstance c);

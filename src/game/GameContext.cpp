@@ -1303,7 +1303,10 @@ bool GameContext::obtainRelic(RelicId r) {
         }
 
         case RelicId::BLACK_BLOOD:
-            break; // takes Burning Blood's slot below
+        case RelicId::FROZEN_CORE:
+        case RelicId::HOLY_WATER:
+        case RelicId::RING_OF_THE_SERPENT:
+            break; // take their starter relic's slot below
 
         case RelicId::BOTTLED_FLAME: {
             opensScreen = obtainBottleHelper(*this, CardType::ATTACK);
@@ -1503,9 +1506,17 @@ bool GameContext::obtainRelic(RelicId r) {
     }
 
     relics.relics.push_back({r, relicData});
-    if (r == RelicId::BLACK_BLOOD && relics.has(RelicId::BURNING_BLOOD)) {
-        relics.replaceRelic(RelicId::BURNING_BLOOD, RelicId::BLACK_BLOOD);
-    }
+
+    // BossRelicSelectScreen.relicObtainLogic gives these four instantObtain into slot 0, in place of the starter relic their canSpawn asks for.
+    const auto replaceStarter = [&](RelicId boss, RelicId starter) {
+        if (r == boss && relics.has(starter)) {
+            relics.replaceRelic(starter, boss);
+        }
+    };
+    replaceStarter(RelicId::BLACK_BLOOD, RelicId::BURNING_BLOOD);
+    replaceStarter(RelicId::FROZEN_CORE, RelicId::CRACKED_CORE);
+    replaceStarter(RelicId::HOLY_WATER, RelicId::PURE_WATER);
+    replaceStarter(RelicId::RING_OF_THE_SERPENT, RelicId::RING_OF_THE_SNAKE);
     return opensScreen;
 }
 
