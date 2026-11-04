@@ -75,8 +75,7 @@ struct Fight {
 
     int damageTaken(int i = 0) { return monster(i).maxHp - monster(i).curHp; }
     bool selecting(CardSelectTask task) const { return bc.inputState == InputState::CARD_SELECT && bc.cardSelectInfo.cardSelectTask == task; }
-    // The monster's next move, so a turn's end doesn't hurt.
-    void calmPlayer() { bc.player.curHp = bc.player.maxHp = 1000; }
+    void calmPlayer() { bc.player.curHp = bc.player.maxHp = 1000; } // so the turns this plays through can't end the fight
 };
 
 // ******** Numbers ********
@@ -131,9 +130,14 @@ void aoeAttacks() {
     CHECK_EQ(spray.damageTaken(1), 18);
 
     // Both hits use the damage from when it was played, so the Byrd's Flight running out in between changes nothing.
+    Fight byrds(MonsterEncounter::THREE_BYRDS);
+    byrds.monster(0).setStatus<MS::FLIGHT>(1);
+    byrds.play(CardId::DAGGER_SPRAY);
+    CHECK(!byrds.monster(0).hasStatus<MS::FLIGHT>());
+    CHECK_EQ(byrds.damageTaken(0), 2 + 2);
+
     Fight allOut(MonsterEncounter::TWO_LOUSE);
-    const int discardMe = allOut.toHand(CardId::WOUND);
-    (void)discardMe;
+    allOut.toHand(CardId::WOUND);
     allOut.play(CardId::ALL_OUT_ATTACK);
     CHECK_EQ(allOut.damageTaken(0), 10);
     CHECK_EQ(static_cast<int>(allOut.bc.cards.discardPile.size()), 2);  // the Wound, with no roll, then the card
@@ -334,7 +338,7 @@ void choke() {
     f.play(CardId::DEFLECT);
     CHECK_EQ(f.damageTaken(), 15);  // HP loss for any card, and block doesn't stop it
     f.play(CardId::CHOKE, true);
-    CHECK_EQ(f.damageTaken(), 18);  // a Choke played under Choke loses to the old amount only; its power comes after
+    CHECK_EQ(f.damageTaken(), 15 + 3);  // the hit goes into block, and this Choke's own power comes after the HP loss
     CHECK_EQ(f.monster().getStatus<MS::CHOKED>(), 8);
     f.calmPlayer();
     f.toDraw(CardId::WOUND);
@@ -479,8 +483,7 @@ void eviscerate() {
     hand.toHand(CardId::WOUND);
     hand.toHand(CardId::DAZED);
     CHECK_EQ(static_cast<int>(hand.bc.cards.hand[0].costForTurn), 3);
-    hand.play(CardId::CALCULATED_GAMBLE);
-    // It's discarded with the rest and lands at its full cost (it's in the discard pile).
+
     Fight one;
     one.toHand(CardId::EVISCERATE);
     one.toHand(CardId::WOUND);
@@ -808,14 +811,14 @@ void shivs() {
     CHECK_EQ(blades.bc.cards.cardsInHand, 1);
     CHECK(blades.bc.cards.hand[0].getId() == CardId::SHIV);
 
-    // A card made by Dual Wield or Nightmare keeps what Glass Knife has lost.
+    // Each card has its own uuid, so another Glass Knife in hand loses nothing.
     Fight knife;
     knife.toHand(CardId::GLASS_KNIFE);
     knife.toHand(CardId::GLASS_KNIFE);
     knife.playIdx(0);
     CHECK_EQ(knife.damageTaken(), 16);
     CHECK_EQ(knife.bc.cards.discardPile.back().specialData, 2);
-    CHECK_EQ(knife.bc.cards.hand[0].specialData, 0);  // another card, another uuid
+    CHECK_EQ(knife.bc.cards.hand[0].specialData, 0);
     SAction(ActionType::CARD, 0, 0).execute(knife.bc);
     CHECK_EQ(knife.damageTaken(), 32);
 }
@@ -1288,7 +1291,6 @@ void randomFights(int fights, std::map<CardId, int> &played) {
                 ++failures;
                 break;
             }
-            // End the turn less often than a card would be picked at random, so the hands get played out.
             const SAction a = actions[rng() % actions.size()];
             if (a.getActionType() == ActionType::CARD) {
                 played[bc.cards.hand[a.getSourceIdx()].getId()] += 1;
