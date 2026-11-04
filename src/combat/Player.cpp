@@ -527,7 +527,7 @@ void Player::hpWasLost(BattleContext &bc, int amount, bool selfDamage) {
     }
 
     if (hasRelic<RelicId::EMOTION_CHIP>()) {
-        // todo
+        emotionChipPulse = true;
     }
 
     if (hasRelic<RelicId::SELF_FORMING_CLAY>()) {
@@ -774,8 +774,9 @@ void Player::applyStartOfTurnRelics(BattleContext &bc) {
         bc.queueMantra(1);
     }
 
-    if (hasRelic<R::EMOTION_CHIP>()) {
-        // todo if lost hp last turn addToBot(new ImpulseAction())
+    if (hasRelic<R::EMOTION_CHIP>() && emotionChipPulse) {
+        emotionChipPulse = false;
+        bc.addToBot( Actions::ImpulseAction() );
     }
 
     if (hasRelic<R::HAPPY_FLOWER>()) {
@@ -789,6 +790,10 @@ void Player::applyStartOfTurnRelics(BattleContext &bc) {
         if (bc.turn == 1) {
             bc.addToBot( Actions::GainBlock(14) );
         }
+    }
+
+    if (hasRelic<R::HOVERING_KITE>()) {
+        kiteTriggeredThisTurn = false;
     }
 
     if (hasRelic<R::INCENSE_BURNER>()) {

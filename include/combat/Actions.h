@@ -260,6 +260,8 @@ namespace sts {
         static Action RemovePlayerDebuffs(); // Orange Pellets Relic
 
         static Action DualityAction(); // Duality Relic
+        static Action ImpulseAction(); // Emotion Chip Relic
+        static Action SpecimenAction(int poison); // The Specimen Relic: ApplyPowerToRandomEnemyAction
 
         static Action ApotheosisAction();
         static Action DropkickAction(int targetIdx, int damage);

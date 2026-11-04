@@ -288,6 +288,7 @@ void Monster::die(BattleContext &bc) {
 
     // Awakened One and the Darklings run onDeath before they clear their powers.
     const int corpseExplosionDamage = maxHp * getStatus<MS::CORPSE_EXPLOSION>();
+    const int poisonAtDeath = getStatus<MS::POISON>(); // relics' onMonsterDeath comes before those two clear their powers too
 
     if (id == MonsterId::AWAKENED_ONE && !miscInfo) { // is awakened one stage 1 // todo change to status
         halfDead = true;
@@ -331,8 +332,8 @@ void Monster::die(BattleContext &bc) {
         bc.addToBot( Actions::DrawCards(1) );
     }
 
-    if (bc.player.hasRelic<RelicId::THE_SPECIMEN>()) {
-        bc.addToBot( Actions::SetState(InputState::SELECT_ENEMY_THE_SPECIMEN_APPLY_POISON) );
+    if (bc.player.hasRelic<RelicId::THE_SPECIMEN>() && poisonAtDeath > 0) {
+        bc.addToBot( Actions::SpecimenAction(poisonAtDeath) );
     }
 }
 
@@ -495,7 +496,7 @@ void Monster::damage(BattleContext &bc, int damage) {
         damage = 0;
     }
 
-    if (hasStatus<MS::INTANGIBLE>()) { // this is probably wrong with potions
+    if (hasStatus<MS::INTANGIBLE>()) { // Nemesis.damage does this to all damage, whatever its type
         if (damage > 0) {
             damage = 1;
         }
@@ -524,7 +525,8 @@ void Monster::loseHp(BattleContext &bc, int amount) {
     if (isDeadOrEscaped() || amount <= 0) {
         return;
     }
-    damageUnblockedHelper(bc, amount);
+    // Poison and Mark are a DamageInfo of type HP_LOSS, and Nemesis.damage takes those down to 1 as well.
+    damageUnblockedHelper(bc, hasStatus<MS::INTANGIBLE>() ? 1 : amount);
 }
 
 void Monster::onHpLost(BattleContext &bc, int amount) {

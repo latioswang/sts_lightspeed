@@ -869,7 +869,7 @@ Action Actions::DiscardSpecificCard(std::int16_t uniqueId) {
     return {[=] (BattleContext &bc) {
         for (int i = 0; i < bc.cards.cardsInHand; ++i) {
             if (bc.cards.hand[i].getUniqueId() == uniqueId) {
-                bc.discardFromHand(i);
+                bc.discardFromHand(i, -1, true);
                 return;
             }
         }
@@ -1767,7 +1767,7 @@ Action Actions::CodexAction() {
         bc.inputState = InputState::CARD_SELECT;
         bc.cardSelectInfo.cardSelectTask = CardSelectTask::CODEX;
         bc.cardSelectInfo.codexCards() =
-                generateDiscoveryCards(bc.cardRandomRng, CharacterClass::IRONCLAD, CardType::INVALID);
+                generateDiscoveryCards(bc.cardRandomRng, bc.player.cc, CardType::INVALID);
     }};
 }
 
@@ -1804,6 +1804,31 @@ Action Actions::DualityAction() {
     return {[](BattleContext &bc) {
         bc.player.buff<PS::DEXTERITY>(1);
         bc.player.debuff<PS::LOSE_DEXTERITY>(1);
+    }};
+}
+
+// Every orb's start and end of turn triggers, and the first orb's again with Gold-Plated Cables.
+Action Actions::ImpulseAction() {
+    return {[](BattleContext &bc) {
+        auto &p = bc.player;
+        for (int i = 0; i < p.orbSlots; ++i) {
+            p.orbOnStartOfTurn(bc, i);
+            p.orbOnEndOfTurn(bc, i);
+        }
+        if (p.hasRelic<R::GOLD_PLATED_CABLES>() && p.hasOrb()) {
+            p.orbOnStartOfTurn(bc, 0);
+            p.orbOnEndOfTurn(bc, 0);
+        }
+    }};
+}
+
+// The target is rolled when this runs, and the ApplyPowerAction it makes goes on top. That's where Snake Skull adds its point.
+Action Actions::SpecimenAction(int poison) {
+    return {[=](BattleContext &bc) {
+        const int idx = bc.monsters.getRandomMonsterIdx(bc.cardRandomRng, true);
+        if (idx != -1) {
+            bc.addToTop( Actions::DebuffEnemy<MS::POISON>(idx, poison) );
+        }
     }};
 }
 

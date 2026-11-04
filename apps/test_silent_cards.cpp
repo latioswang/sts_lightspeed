@@ -225,13 +225,13 @@ void poisonTicks() {
     kill.endTurn();
     CHECK(kill.bc.outcome == Outcome::PLAYER_VICTORY);
 
-    Fight intangible;  // a monster's Intangible only changes damage worked out from a card or an attack
+    Fight intangible;  // Nemesis.damage takes HP loss down to 1 as well, and PoisonLoseHpAction goes through it
     intangible.calmPlayer();
     intangible.monster().buff<MS::INTANGIBLE>(2);
     intangible.monster().addDebuff<MS::POISON>(7);
     intangible.toDraw(CardId::WOUND);
     intangible.endTurn();
-    CHECK_EQ(intangible.damageTaken(), 7);
+    CHECK_EQ(intangible.damageTaken(), 1);
 
     Fight artifact;
     artifact.monster().buff<MS::ARTIFACT>(1);
