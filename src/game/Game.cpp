@@ -7,7 +7,9 @@
 #include "game/Game.h"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
+#include <vector>
 
 using namespace sts;
 
@@ -219,16 +221,64 @@ CardId sts::getTrulyRandomColorlessCardInCombat(Random &cardRandomRng) {
     return CombatColorlessCardPool::getCardAt(idx);
 }
 
+namespace {
+
+// AbstractDungeon.returnTrulyRandomCardInCombat: the class's common, uncommon and rare pools in turn, leaving out cards
+// tagged HEALING. It reads the src pools, which initializeCardPools fills with addToBottom, so each is in reverse order.
+bool isHealingCard(CardId id) {
+    switch (id) {
+        case CardId::ALCHEMIZE:
+        case CardId::FEED:
+        case CardId::LESSON_LEARNED:
+        case CardId::REAPER:
+        case CardId::SELF_REPAIR:
+        case CardId::WISH:
+            return true;
+        default:
+            return false;
+    }
+}
+
+struct CombatPool {
+    std::vector<CardId> all;
+    std::vector<CardId> attacks;
+    std::vector<CardId> skills;
+    std::vector<CardId> powers;
+};
+
+CombatPool buildCombatPool(CharacterClass cc) {
+    CombatPool pool;
+    for (const CardRarity rarity : {CardRarity::COMMON, CardRarity::UNCOMMON, CardRarity::RARE}) {
+        for (int i = RarityCardPool::getPoolSize(cc, rarity) - 1; i >= 0; --i) {
+            const CardId id = RarityCardPool::getCardFromPool(cc, rarity, i);
+            if (isHealingCard(id)) continue;
+            pool.all.push_back(id);
+            const CardType type = getCardType(id);
+            if (type == CardType::ATTACK) pool.attacks.push_back(id);
+            else if (type == CardType::SKILL) pool.skills.push_back(id);
+            else if (type == CardType::POWER) pool.powers.push_back(id);
+        }
+    }
+    return pool;
+}
+
+const CombatPool &combatPool(CharacterClass cc) {
+    static const std::array<CombatPool, 4> pools{buildCombatPool(CharacterClass::IRONCLAD), buildCombatPool(CharacterClass::SILENT),
+                                                 buildCombatPool(CharacterClass::DEFECT), buildCombatPool(CharacterClass::WATCHER)};
+    return pools[static_cast<int>(cc)];
+}
+
+}  // namespace
+
 CardId sts::getTrulyRandomCardInCombat(Random &cardRandomRng, CharacterClass cc) {
-    const auto poolSize = CombatCardPool::getPoolSize(cc);
-    const auto idx = cardRandomRng.random(poolSize-1);
-    return CombatCardPool::getCardAt(cc, idx);
+    const auto &pool = combatPool(cc).all;
+    return pool[cardRandomRng.random(static_cast<int>(pool.size()) - 1)];
 }
 
 CardId sts::getTrulyRandomCardInCombat(Random &cardRandomRng, const CharacterClass cc, const CardType type) {
-    const auto poolSize = CombatTypeCardPool::getPoolSize(cc, type);
-    const auto idx = cardRandomRng.random(poolSize-1);
-    return CombatTypeCardPool::getCardAt(cc, type, idx);
+    const CombatPool &pools = combatPool(cc);
+    const auto &pool = type == CardType::ATTACK ? pools.attacks : type == CardType::SKILL ? pools.skills : pools.powers;
+    return pool[cardRandomRng.random(static_cast<int>(pool.size()) - 1)];
 }
 
 // using hacky arguments: status = colorless cards, invalid = any type

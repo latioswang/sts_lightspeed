@@ -147,45 +147,6 @@ namespace sts {
 
     }
 
-    namespace CombatTypeCardPool {
-
-        static constexpr CardId cardBlob[] = {CardId::SWORD_BOOMERANG, CardId::PERFECTED_STRIKE, CardId::HEAVY_BLADE, CardId::WILD_STRIKE, CardId::HEADBUTT, CardId::CLOTHESLINE, CardId::TWIN_STRIKE, CardId::POMMEL_STRIKE, CardId::THUNDERCLAP, CardId::CLASH, CardId::BODY_SLAM, CardId::IRON_WAVE, CardId::CLEAVE, CardId::ANGER, CardId::UPPERCUT, CardId::DROPKICK, CardId::CARNAGE, CardId::SEARING_BLOW, CardId::WHIRLWIND, CardId::SEVER_SOUL, CardId::RAMPAGE, CardId::PUMMEL, CardId::BLOOD_FOR_BLOOD, CardId::HEMOKINESIS, CardId::RECKLESS_CHARGE, CardId::BLUDGEON, CardId::FIEND_FIRE, CardId::IMMOLATE,};
-        static constexpr CardId skills[] = {CardId::HAVOC, CardId::ARMAMENTS, CardId::SHRUG_IT_OFF, CardId::TRUE_GRIT, CardId::FLEX, CardId::WARCRY, CardId::GHOSTLY_ARMOR, CardId::BLOODLETTING, CardId::SECOND_WIND, CardId::BATTLE_TRANCE, CardId::SENTINEL, CardId::ENTRENCH, CardId::RAGE, CardId::DISARM, CardId::SEEING_RED, CardId::SHOCKWAVE, CardId::BURNING_PACT, CardId::FLAME_BARRIER, CardId::INTIMIDATE, CardId::INFERNAL_BLADE, CardId::DUAL_WIELD, CardId::POWER_THROUGH, CardId::SPOT_WEAKNESS, CardId::DOUBLE_TAP, CardId::LIMIT_BREAK, CardId::IMPERVIOUS, CardId::EXHUME, CardId::OFFERING,};
-        static constexpr CardId powers[] = {CardId::EVOLVE, CardId::FIRE_BREATHING, CardId::RUPTURE, CardId::FEEL_NO_PAIN, CardId::DARK_EMBRACE, CardId::COMBUST, CardId::METALLICIZE, CardId::INFLAME, CardId::DEMON_FORM, CardId::CORRUPTION, CardId::BARRICADE, CardId::BERSERK, CardId::JUGGERNAUT, CardId::BRUTALITY,};
-
-        static constexpr int getPoolSize(CharacterClass cc, CardType type) {
-            return type == CardType::POWER ? 14 : 28;
-        }
-
-        static constexpr CardId getCardAt(CharacterClass cc, CardType type, int offset) {
-            if (type == CardType::ATTACK) {
-                return cardBlob[offset];
-
-            } else if (type == CardType::SKILL) {
-                return skills[offset];
-
-            } else if (type == CardType::POWER) {
-                return powers[offset];
-
-            } else {
-                return powers[offset];
-            }
-        }
-
-    }
-
-    namespace CombatCardPool {
-        static constexpr CardId cardBlob[] = {CardId::SWORD_BOOMERANG, CardId::PERFECTED_STRIKE, CardId::HEAVY_BLADE, CardId::WILD_STRIKE, CardId::HEADBUTT, CardId::HAVOC, CardId::ARMAMENTS, CardId::CLOTHESLINE, CardId::TWIN_STRIKE, CardId::POMMEL_STRIKE, CardId::THUNDERCLAP, CardId::CLASH, CardId::SHRUG_IT_OFF, CardId::TRUE_GRIT, CardId::BODY_SLAM, CardId::IRON_WAVE, CardId::FLEX, CardId::WARCRY, CardId::CLEAVE, CardId::ANGER, CardId::EVOLVE, CardId::UPPERCUT, CardId::GHOSTLY_ARMOR, CardId::FIRE_BREATHING, CardId::DROPKICK, CardId::CARNAGE, CardId::BLOODLETTING, CardId::RUPTURE, CardId::SECOND_WIND, CardId::SEARING_BLOW, CardId::BATTLE_TRANCE, CardId::SENTINEL, CardId::ENTRENCH, CardId::RAGE, CardId::FEEL_NO_PAIN, CardId::DISARM, CardId::SEEING_RED, CardId::DARK_EMBRACE, CardId::COMBUST, CardId::WHIRLWIND, CardId::SEVER_SOUL, CardId::RAMPAGE, CardId::SHOCKWAVE, CardId::METALLICIZE, CardId::BURNING_PACT, CardId::PUMMEL, CardId::FLAME_BARRIER, CardId::BLOOD_FOR_BLOOD, CardId::INTIMIDATE, CardId::HEMOKINESIS, CardId::RECKLESS_CHARGE, CardId::INFERNAL_BLADE, CardId::DUAL_WIELD, CardId::POWER_THROUGH, CardId::INFLAME, CardId::SPOT_WEAKNESS, CardId::DOUBLE_TAP, CardId::DEMON_FORM, CardId::BLUDGEON, CardId::LIMIT_BREAK, CardId::CORRUPTION, CardId::BARRICADE, CardId::FIEND_FIRE, CardId::BERSERK, CardId::IMPERVIOUS, CardId::JUGGERNAUT, CardId::BRUTALITY, CardId::EXHUME, CardId::OFFERING, CardId::IMMOLATE,};
-
-        static constexpr int getPoolSize(CharacterClass cc) {
-            return 70;
-        }
-
-        static constexpr CardId getCardAt(CharacterClass cc, int offset) {
-            return cardBlob[offset];
-        }
-    }
-
     namespace CombatColorlessCardPool {
 
         static constexpr CardId cards[] = {CardId::MADNESS, CardId::THINKING_AHEAD, CardId::MIND_BLAST, CardId::METAMORPHOSIS, CardId::JACK_OF_ALL_TRADES, CardId::SWIFT_STRIKE, CardId::GOOD_INSTINCTS, CardId::MASTER_OF_STRATEGY, CardId::MAGNETISM, CardId::FINESSE, CardId::DISCOVERY, CardId::CHRYSALIS, CardId::TRANSMUTATION, CardId::PANACEA, CardId::PURITY, CardId::ENLIGHTENMENT, CardId::FORETHOUGHT, CardId::FLASH_OF_STEEL, CardId::HAND_OF_GREED, CardId::MAYHEM, CardId::APOTHEOSIS, CardId::SECRET_WEAPON, CardId::PANACHE, CardId::VIOLENCE, CardId::DEEP_BREATH, CardId::SECRET_TECHNIQUE, CardId::BLIND, CardId::THE_BOMB, CardId::IMPATIENCE, CardId::DRAMATIC_ENTRANCE, CardId::TRIP, CardId::PANIC_BUTTON, CardId::SADISTIC_NATURE, CardId::DARK_SHACKLES, };
