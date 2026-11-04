@@ -744,6 +744,18 @@ namespace sts {
             case CardId::THINKING_AHEAD:
             case CardId::VIOLENCE:
             case CardId::WARCRY:
+            case CardId::BEAM_CELL:
+            case CardId::BOOT_SEQUENCE:
+            case CardId::CHILL:
+            case CardId::CLAW:
+            case CardId::FTL:
+            case CardId::FISSION:
+            case CardId::GO_FOR_THE_EYES:
+            case CardId::OVERCLOCK:
+            case CardId::REBOOT:
+            case CardId::SEEK:
+            case CardId::STEAM_BARRIER:
+            case CardId::TURBO:
                 return 0;
 
             case CardId::DEFEND_BLUE:
@@ -780,6 +792,16 @@ namespace sts {
             case CardId::UPPERCUT:
             case CardId::SEARING_BLOW:
             case CardId::SEVER_SOUL:
+            case CardId::ALL_FOR_ONE:
+            case CardId::BUFFER:
+            case CardId::CONSUME:
+            case CardId::DOOM_AND_GLOOM:
+            case CardId::ELECTRODYNAMICS:
+            case CardId::EQUILIBRIUM:
+            case CardId::GLACIER:
+            case CardId::HYPERBEAM:
+            case CardId::RAINBOW:
+            case CardId::STREAMLINE:
                 return 2;
 
             case CardId::BARRICADE:
@@ -790,7 +812,22 @@ namespace sts {
             case CardId::OMEGA:
             case CardId::WRAITH_FORM:
             case CardId::DEMON_FORM:
+            case CardId::ECHO_FORM:
+            case CardId::SUNDER:
+            case CardId::THUNDER_STRIKE:
                 return 3;
+
+            case CardId::CREATIVE_AI:
+                return upgraded ? 2 : 3;
+
+            case CardId::FORCE_FIELD:
+                return 4;
+
+            case CardId::METEOR_STRIKE:
+                return 5;
+
+            case CardId::FUSION:
+                return upgraded ? 1 : 2;
 
             case CardId::BLOOD_FOR_BLOOD:
                 return upgraded ? 3 : 4;
@@ -809,6 +846,12 @@ namespace sts {
             case CardId::BODY_SLAM:
             case CardId::EXHUME:
             case CardId::MADNESS:
+            case CardId::DOUBLE_ENERGY:
+            case CardId::DUALCAST:
+            case CardId::RECURSION:
+            case CardId::RECYCLE:
+            case CardId::WHITE_NOISE:
+            case CardId::ZAP:
                 return upgraded ? 0 : 1;
 
 
@@ -817,6 +860,7 @@ namespace sts {
             case CardId::MALAISE:
             case CardId::MULTI_CAST:
             case CardId::REINFORCED_BODY:
+            case CardId::TEMPEST:
                 return -1;
 
             case CardId::BURN:
