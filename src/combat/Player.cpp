@@ -967,25 +967,23 @@ void Player::applyStartOfTurnPostDrawPowers(BattleContext &bc) {
                 bc.addToBot( Actions::BuffPlayer<PS::MANTRA>(pair.second) ); // todo make buffing mantra switch stance
                 break;
 
+            case PS::DRAW_CARD_NEXT_TURN:
+                bc.addToBot( Actions::DrawCards(pair.second) );
+                removeStatus<PS::DRAW_CARD_NEXT_TURN>();
+                break;
+
             case PS::NOXIOUS_FUMES:
                 bc.addToBot( Actions::DebuffAllEnemy<MS::POISON>(pair.second) );
+                break;
+
+            case PS::TOOLS_OF_THE_TRADE:
+                bc.addToBot( Actions::DrawCards(pair.second) );
+                bc.addToBot( Actions::DiscardAction(pair.second) );
                 break;
 
             default:
                 break;
         }
-    }
-
-    // Powers go in order of priority, and these two are the only ones here above the default.
-    if (hasStatus<PS::DRAW_CARD_NEXT_TURN>()) { // priority 20
-        bc.addToBot( Actions::DrawCards(getStatus<PS::DRAW_CARD_NEXT_TURN>()) );
-        removeStatus<PS::DRAW_CARD_NEXT_TURN>();
-    }
-
-    if (hasStatus<PS::TOOLS_OF_THE_TRADE>()) { // priority 25
-        const int tools = getStatus<PS::TOOLS_OF_THE_TRADE>();
-        bc.addToBot( Actions::DrawCards(tools) );
-        bc.addToBot( Actions::DiscardAction(tools) );
     }
 }
 
