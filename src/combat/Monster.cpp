@@ -313,6 +313,9 @@ void Monster::die(BattleContext &bc) {
     } else if (hasStatus<MS::REGROW>()) {
         resetAllStatusEffects();
         setMove(MMID::DARKLING_REGROW);
+        // Darkling.damage queues this too. A Darkling killed on its own turn, by Thorns, already has its RollMoveAction
+        // queued, and this one comes after it, so it still waits a full turn before it can revive.
+        bc.addToBot( Actions::SetMonsterMove(idx, MMID::DARKLING_REGROW) );
         halfDead = true;
 
     } else if (hasStatus<MS::STASIS>()) {
