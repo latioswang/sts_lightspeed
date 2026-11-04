@@ -1848,9 +1848,13 @@ void BattleContext::useSkillCard() {
             addToBot( Actions::DrawCards(up ? 4 : 3) );
             break;
 
-        case CardId::STACK: // Stack.applyPowers works its base block out from the discard pile
-            addToBot( Actions::GainBlock(calculateCardBlock(static_cast<int>(cards.discardPile.size()) + (up ? 3 : 0))) );
+        case CardId::STACK: { // Stack.applyPowers works its base block out from the discard pile
+            // PlayTopCardAction runs applyPowers as it takes the card, before the cards taken ahead of it have been played
+            const bool offTheTop = curCardQueueItem.autoplay && c.specialData > 0;
+            const int discarded = offTheTop ? c.specialData - 1 : static_cast<int>(cards.discardPile.size());
+            addToBot( Actions::GainBlock(calculateCardBlock(discarded + (up ? 3 : 0))) );
             break;
+        }
 
         case CardId::STEAM_BARRIER: // ModifyBlockAction takes one from baseBlock, which can go below 0 and then Dexterity starts from there
             addToBot( Actions::GainBlock(calculateCardBlock((up ? 8 : 6) - c.specialData)) );
@@ -3044,6 +3048,8 @@ void BattleContext::playTopCardInDrawPile(int monsterTargetIdx, bool exhausts) {
     auto top = cards.popFromDrawPile();
     if (top.getId() == CardId::MIND_BLAST) {
         top.specialData = static_cast<std::int16_t>(cards.drawPile.size() + 1);
+    } else if (top.getId() == CardId::STACK) {
+        top.specialData = static_cast<std::int16_t>(cards.discardPile.size() + 1);
     }
     CardQueueItem item(top, monsterTargetIdx, player.energy);
     item.exhaustOnUse = exhausts;
