@@ -3866,6 +3866,14 @@ void BattleContext::playTopCardInDrawPile(int monsterTargetIdx, bool exhausts) {
     addToBotCard(item);
 }
 
+// Blood for Blood's and Eviscerate's makeCopy set the new card's cost from the fight so far.
+void BattleContext::applyMakeCopy(CardInstance &c) const {
+    c.tookDamageTimes(player.timesDamagedThisCombat);
+    if (c.getId() == CardId::EVISCERATE) {
+        c.setCostForTurn(c.cost - player.cardsDiscardedThisTurn);
+    }
+}
+
 void BattleContext::moveToHandHelper(CardInstance c) {
     if (cards.cardsInHand < 10) {
         if (player.hasStatus<PS::CORRUPTION>() && c.getType() == CardType::SKILL) {
@@ -4212,7 +4220,7 @@ void BattleContext::triggerAndMoveToExhaustPile(CardInstance c) {
 
     if (player.hasRelic<R::DEAD_BRANCH>()){
         CardInstance c(getTrulyRandomCardInCombat(cardRandomRng, player.cc));
-        c.tookDamageTimes(player.timesDamagedThisCombat);
+        applyMakeCopy(c);
         addToBot(Actions::MakeTempCardInHand(c));
     }
 
@@ -4368,7 +4376,7 @@ void BattleContext::chooseSetupCard(int handIdx) {
 void BattleContext::chooseCodexCard(CardId id) {
     CardInstance c(id);
     upgradeIfMasterReality(c);
-    c.tookDamageTimes(player.timesDamagedThisCombat);
+    applyMakeCopy(c);
     c.uniqueId = static_cast<std::int16_t>(cards.nextUniqueCardId++);
     cards.notifyAddCardToCombat(c);
     cards.shuffleIntoDrawPile(cardRandomRng, c);
@@ -4438,7 +4446,7 @@ void BattleContext::chooseDiscoveryCard(CardId id) {
     const auto discoveryAmount = cardSelectInfo.data0;
     CardInstance c(id);
     upgradeIfMasterReality(c);
-    c.tookDamageTimes(player.timesDamagedThisCombat);
+    applyMakeCopy(c);
     if (cardSelectInfo.discoveryIsFree) {
         c.setCostForTurn(0);
     }

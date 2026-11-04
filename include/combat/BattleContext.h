@@ -175,6 +175,7 @@ namespace sts {
 
         void playTopCardInDrawPile(int monsterTargetIdx, bool exhausts);
 
+        void applyMakeCopy(CardInstance &c) const;
         void moveToHandHelper(CardInstance c);
         void upgradeIfMasterReality(CardInstance &c) const; // what MakeTempCard and the card effects do with Master Reality
         void changeStance(Stance newStance); // ChangeStanceAction
