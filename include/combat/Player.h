@@ -12,6 +12,7 @@
 #ifndef STS_AI_PLAYER_H
 #define STS_AI_PLAYER_H
 
+#include <array>
 #include <iostream>
 #include <vector>
 #include <cstdint>
@@ -73,6 +74,13 @@ namespace sts {
         std::uint64_t statusBits0 = 0;
         std::uint32_t statusBits1 = 0;
         std::map<PlayerStatus, std::int16_t> statusMap;
+
+        // The game's powers list: sorted by priority, and in the order gained within a priority. Powers trigger in this order.
+        static constexpr int kMaxOrderedPowers = 48;
+        std::array<PlayerStatus, kMaxOrderedPowers> powerOrder{};
+        std::uint8_t powerOrderCount = 0;
+        void notePowerGained(PlayerStatus s);
+        void notePowerLost(PlayerStatus s);
 
         std::uint64_t relicBits0 = 0;
         std::uint64_t relicBits1 = 0;
@@ -274,6 +282,11 @@ namespace sts {
                 return;
             default:
                 break;
+        }
+
+        if (value != hasStatus<s>()) {
+            if (value) notePowerGained(s);
+            else notePowerLost(s);
         }
 
         //static_assert(((int)s) < 64); // did we add too many status effects
