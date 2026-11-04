@@ -1389,6 +1389,155 @@ void BattleContext::useAttackCard() {
             addToBot( Actions::AttackRandomEnemy(up ? 9 : 7, player.lightningChanneled) );
             break;
 
+        // ************************* Silent, ported with hewzhew/SpireSim as a reference and checked against the game *************************
+
+        case CardId::ALL_OUT_ATTACK:
+            addToBot( Actions::AttackAllEnemy(calculateMultiDamage(c, up ? 14 : 10)) );
+            addToBot( Actions::DiscardAction(1, true) );
+            break;
+
+        case CardId::BACKSTAB:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 15 : 11)) );
+            break;
+
+        case CardId::BANE: {
+            const int damage = calculateCardDamage(c, t, up ? 10 : 7);
+            addToBot( Actions::AttackEnemy(t, damage) );
+            addToBot( Actions::BaneAction(t, damage) );
+            break;
+        }
+
+        case CardId::CHOKE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, 12)) );
+            addToBot( Actions::DebuffEnemy<MS::CHOKED>(t, up ? 5 : 3, false) );
+            break;
+
+        case CardId::DAGGER_SPRAY: { // both hits use the damage worked out when it's played
+            const auto damage = calculateMultiDamage(c, up ? 6 : 4);
+            addToBot( Actions::AttackAllEnemy(damage) );
+            addToBot( Actions::AttackAllEnemy(damage) );
+            break;
+        }
+
+        case CardId::DAGGER_THROW:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 12 : 9)) );
+            addToBot( Actions::DrawCards(1) );
+            addToBot( Actions::DiscardAction(1) );
+            break;
+
+        case CardId::DASH:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 13 : 10)) );
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 13 : 10)) );
+            break;
+
+        case CardId::DIE_DIE_DIE:
+            addToBot( Actions::AttackAllEnemy(calculateMultiDamage(c, up ? 17 : 13)) );
+            break;
+
+        case CardId::ENDLESS_AGONY:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 6 : 4)) );
+            break;
+
+        case CardId::EVISCERATE: {
+            const int damage = calculateCardDamage(c, t, up ? 9 : 7);
+            for (int i = 0; i < 3; ++i) {
+                addToBot( Actions::AttackEnemy(t, damage) );
+            }
+            break;
+        }
+
+        case CardId::FINISHER:
+            addToBot( Actions::FinisherAction(t, calculateCardDamage(c, t, up ? 8 : 6)) );
+            break;
+
+        case CardId::FLECHETTES:
+            addToBot( Actions::FlechetteAction(t, calculateCardDamage(c, t, up ? 6 : 4)) );
+            break;
+
+        case CardId::FLYING_KNEE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 11 : 8)) );
+            addToBot( Actions::BuffPlayer<PS::ENERGIZED>(1) );
+            break;
+
+        case CardId::GLASS_KNIFE: {
+            const int damage = calculateCardDamage(c, t, (up ? 12 : 8) - c.specialData);
+            addToBot( Actions::AttackEnemy(t, damage) );
+            addToBot( Actions::AttackEnemy(t, damage) );
+            addToBot( Actions::GlassKnifeAction(c.getUniqueId()) );
+            break;
+        }
+
+        case CardId::GRAND_FINALE:
+            addToBot( Actions::AttackAllEnemy(calculateMultiDamage(c, up ? 60 : 50)) );
+            break;
+
+        case CardId::HEEL_HOOK:
+            addToBot( Actions::HeelHookAction(t, calculateCardDamage(c, t, up ? 8 : 5)) );
+            break;
+
+        case CardId::MASTERFUL_STAB:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 16 : 12)) );
+            break;
+
+        case CardId::NEUTRALIZE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 4 : 3)) );
+            addToBot( Actions::DebuffEnemy<MS::WEAK>(t, up ? 2 : 1, false) );
+            break;
+
+        case CardId::POISONED_STAB:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 8 : 6)) );
+            addToBot( Actions::DebuffEnemy<MS::POISON>(t, up ? 4 : 3) );
+            break;
+
+        case CardId::PREDATOR:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 20 : 15)) );
+            addToBot( Actions::BuffPlayer<PS::DRAW_CARD_NEXT_TURN>(2) );
+            break;
+
+        case CardId::QUICK_SLASH:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 12 : 8)) );
+            addToBot( Actions::DrawCards(1) );
+            break;
+
+        case CardId::RIDDLE_WITH_HOLES: {
+            const int damage = calculateCardDamage(c, t, up ? 4 : 3);
+            for (int i = 0; i < 5; ++i) {
+                addToBot( Actions::AttackEnemy(t, damage) );
+            }
+            break;
+        }
+
+        case CardId::SHIV: // Accuracy writes this into the card's baseDamage, wherever the card is
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, (up ? 6 : 4) + player.getStatus<PS::ACCURACY>())) );
+            break;
+
+        case CardId::SKEWER:
+            if (!item.ignoreEnergyTotal && player.energy < item.energyOnUse) {
+                item.energyOnUse = player.energy;
+            }
+            addToBot( Actions::SkewerAction(t, calculateCardDamage(c, t, up ? 10 : 7), item.energyOnUse,
+                                            !(item.autoplay || item.freeToPlay || c.freeToPlayOnce)) );
+            break;
+
+        case CardId::SLICE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 9 : 6)) );
+            break;
+
+        case CardId::SNEAKY_STRIKE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 16 : 12)) );
+            addToBot( Actions::GainEnergyIfDiscard(2) );
+            break;
+
+        case CardId::SUCKER_PUNCH:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 9 : 7)) );
+            addToBot( Actions::DebuffEnemy<MS::WEAK>(t, up ? 2 : 1, false) );
+            break;
+
+        case CardId::UNLOAD:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 18 : 14)) );
+            addToBot( Actions::UnloadAction() );
+            break;
+
         default:
 #ifdef sts_asserts
             std::cerr << "attempted to use unimplemented card: " << c.getName() << std::endl;
