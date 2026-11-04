@@ -457,8 +457,10 @@ Action Actions::RandomizeHandCost() {
             auto &c = bc.cards.hand[i];
             if (c.cost >= 0) {
                 int newCost = bc.cardRandomRng.random(3);
-                c.cost = newCost;
-                c.costForTurn = newCost;
+                if (c.cost != newCost) {  // the same cost leaves a change for the turn, such as Infernal Blade's
+                    c.cost = newCost;
+                    c.costForTurn = newCost;
+                }
             }
         }
     }};
