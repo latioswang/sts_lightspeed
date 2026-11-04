@@ -2045,6 +2045,186 @@ void BattleContext::useSkillCard() {
             addToBot( Actions::ChannelOrb(Orb::LIGHTNING) );
             break;
 
+        // ************************* Silent, ported with hewzhew/SpireSim as a reference and checked against the game *************************
+
+        case CardId::ACROBATICS:
+            addToBot( Actions::DrawCards(up ? 4 : 3) );
+            addToBot( Actions::DiscardAction(1) );
+            break;
+
+        case CardId::ADRENALINE:
+            addToBot( Actions::GainEnergy(up ? 2 : 1) );
+            addToBot( Actions::DrawCards(2) );
+            break;
+
+        case CardId::ALCHEMIZE: // rolled when the card is played
+            addToBot( Actions::ObtainPotion(returnRandomPotion(potionRng, player.cc, true)) );
+            break;
+
+        case CardId::BACKFLIP:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 8 : 5)) );
+            addToBot( Actions::DrawCards(2) );
+            break;
+
+        case CardId::BLADE_DANCE:
+            addToBot( Actions::MakeTempCardInHand(CardId::SHIV, false, up ? 4 : 3) );
+            break;
+
+        case CardId::BLUR:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 8 : 5)) );
+            addToBot( Actions::BuffPlayer<PS::BLUR>(1) );
+            break;
+
+        case CardId::BOUNCING_FLASK: // the first target is rolled when the card is played
+            addToBot( Actions::BouncingFlaskAction(monsters.getRandomMonsterIdx(cardRandomRng, true), 3, up ? 4 : 3) );
+            break;
+
+        case CardId::BULLET_TIME:
+            addToBot( Actions::DebuffPlayer<PS::NO_DRAW>(1, false) );
+            addToBot( Actions::BulletTimeAction() );
+            break;
+
+        case CardId::BURST:
+            addToBot( Actions::BuffPlayer<PS::BURST>(up ? 2 : 1) );
+            break;
+
+        case CardId::CALCULATED_GAMBLE:
+            addToBot( Actions::CalculatedGambleAction() );
+            break;
+
+        case CardId::CATALYST:
+            addToBot( Actions::CatalystAction(t, up ? 3 : 2) );
+            break;
+
+        case CardId::CLOAK_AND_DAGGER:
+            addToBot( Actions::GainBlock(calculateCardBlock(6)) );
+            addToBot( Actions::MakeTempCardInHand(CardId::SHIV, false, up ? 2 : 1) );
+            break;
+
+        case CardId::CONCENTRATE:
+            addToBot( Actions::DiscardAction(up ? 2 : 3) );
+            addToBot( Actions::GainEnergy(2) );
+            break;
+
+        case CardId::CORPSE_EXPLOSION:
+            addToBot( Actions::DebuffEnemy<MS::POISON>(t, up ? 9 : 6) );
+            addToBot( Actions::DebuffEnemy<MS::CORPSE_EXPLOSION>(t, 1) );
+            break;
+
+        case CardId::CRIPPLING_CLOUD: // the game's Crippling Poison
+            if (!monsters.areMonstersBasicallyDead()) {
+                for (int i = 0; i < monsters.monsterCount; ++i) {
+                    if (!monsters.arr[i].isDying()) {
+                        addToBot( Actions::DebuffEnemy<MS::POISON>(i, up ? 7 : 4) );
+                        addToBot( Actions::DebuffEnemy<MS::WEAK>(i, 2, false) );
+                    }
+                }
+            }
+            break;
+
+        case CardId::DEADLY_POISON:
+            addToBot( Actions::DebuffEnemy<MS::POISON>(t, up ? 7 : 5) );
+            break;
+
+        case CardId::DEFLECT:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 7 : 4)) );
+            break;
+
+        case CardId::DISTRACTION: { // rolled when the card is played, from the class's own pool as for every card made in combat
+            CardInstance skill(getTrulyRandomCardInCombat(cardRandomRng, player.cc, CardType::SKILL));
+            skill.setCostForTurn(0);
+            addToBot( Actions::MakeTempCardInHand(skill) );
+            break;
+        }
+
+        case CardId::DODGE_AND_ROLL: {
+            const int block = calculateCardBlock(up ? 6 : 4);
+            addToBot( Actions::GainBlock(block) );
+            addToBot( Actions::BuffPlayer<PS::NEXT_TURN_BLOCK>(block) );
+            break;
+        }
+
+        case CardId::DOPPELGANGER:
+            if (!item.ignoreEnergyTotal && player.energy < item.energyOnUse) {
+                item.energyOnUse = player.energy;
+            }
+            addToBot( Actions::DoppelgangerAction(item.energyOnUse, up, !(item.autoplay || item.freeToPlay || c.freeToPlayOnce)) );
+            break;
+
+        case CardId::ESCAPE_PLAN:
+            addToBot( Actions::EscapePlanDraw(calculateCardBlock(up ? 5 : 3)) );
+            break;
+
+        case CardId::EXPERTISE:
+            addToBot( Actions::ExpertiseAction(up ? 7 : 6) );
+            break;
+
+        case CardId::LEG_SWEEP:
+            addToBot( Actions::DebuffEnemy<MS::WEAK>(t, up ? 3 : 2, false) );
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 14 : 11)) );
+            break;
+
+        case CardId::MALAISE:
+            if (!item.ignoreEnergyTotal && player.energy < item.energyOnUse) {
+                item.energyOnUse = player.energy;
+            }
+            addToBot( Actions::MalaiseAction(t, item.energyOnUse, up, !(item.autoplay || item.freeToPlay || c.freeToPlayOnce)) );
+            break;
+
+        case CardId::NIGHTMARE:
+            addToBot( Actions::NightmareAction() );
+            break;
+
+        case CardId::OUTMANEUVER:
+            addToBot( Actions::BuffPlayer<PS::ENERGIZED>(up ? 3 : 2) );
+            break;
+
+        case CardId::PHANTASMAL_KILLER:
+            addToBot( Actions::BuffPlayer<PS::PHANTASMAL>(1) );
+            break;
+
+        case CardId::PIERCING_WAIL: { // Artifact is looked at when the card is played, before any of this has used it
+            const int amount = up ? 8 : 6;
+            for (int i = 0; i < monsters.monsterCount; ++i) {
+                addToBot( Actions::DebuffEnemy<MS::STRENGTH>(i, -amount, false) );
+            }
+            for (int i = 0; i < monsters.monsterCount; ++i) {
+                if (!monsters.arr[i].hasStatus<MS::ARTIFACT>()) {
+                    addToBot( Actions::BuffEnemy<MS::SHACKLED>(i, amount) );
+                }
+            }
+            break;
+        }
+
+        case CardId::PREPARED:
+            addToBot( Actions::DrawCards(up ? 2 : 1) );
+            addToBot( Actions::DiscardAction(up ? 2 : 1) );
+            break;
+
+        case CardId::REFLEX: // can't be played, but the game's use is there
+            addToBot( Actions::DrawCards(up ? 3 : 2) );
+            break;
+
+        case CardId::SETUP:
+            addToBot( Actions::SetupAction() );
+            break;
+
+        case CardId::STORM_OF_STEEL:
+            addToBot( Actions::StormOfSteelAction(up) );
+            break;
+
+        case CardId::SURVIVOR:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 11 : 8)) );
+            addToBot( Actions::DiscardAction(1) );
+            break;
+
+        case CardId::TACTICIAN: // can't be played, and its use is empty
+            break;
+
+        case CardId::TERROR:
+            addToBot( Actions::DebuffEnemy<MS::VULNERABLE>(t, 99, false) );
+            break;
+
         default:
 #ifdef sts_asserts
             std::cerr << "attempted to use unimplemented card: " << c.getName() << std::endl;
