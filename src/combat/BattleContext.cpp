@@ -1254,6 +1254,117 @@ void BattleContext::useAttackCard() {
             break;
 
 
+        // ************************* Defect, ported from Attemory/sts_lightspeed and checked against the game *************************
+
+        case CardId::ALL_FOR_ONE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 14 : 10)) );
+            addToBot( Actions::AllCostToHandAction(0) );
+            break;
+
+        case CardId::BALL_LIGHTNING:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 10 : 7)) );
+            addToBot( Actions::ChannelOrb(Orb::LIGHTNING) );
+            break;
+
+        case CardId::BARRAGE:
+            addToBot( Actions::BarrageAction(t, calculateCardDamage(c, t, up ? 6 : 4)) );
+            break;
+
+        case CardId::BEAM_CELL:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 4 : 3)) );
+            addToBot( Actions::DebuffEnemy<MS::VULNERABLE>(t, up ? 2 : 1, false) );
+            break;
+
+        case CardId::BLIZZARD:
+            addToBot( Actions::AttackAllEnemy((up ? 3 : 2) * player.frostChanneled) );
+            break;
+
+        case CardId::BULLSEYE: // the game's Lock-On
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 11 : 8)) );
+            addToBot( Actions::DebuffEnemy<MS::LOCK_ON>(t, up ? 3 : 2, false) );
+            break;
+
+        case CardId::CLAW:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, (up ? 5 : 3) + c.specialData)) );
+            addToBot( Actions::GashAction(2) );
+            break;
+
+        case CardId::COLD_SNAP:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 9 : 6)) );
+            addToBot( Actions::ChannelOrb(Orb::FROST) );
+            break;
+
+        case CardId::COMPILE_DRIVER:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 10 : 7)) );
+            addToBot( Actions::CompileDriverAction(1) );
+            break;
+
+        case CardId::CORE_SURGE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 15 : 11)) );
+            addToBot( Actions::BuffPlayer<PS::ARTIFACT>(1) );
+            break;
+
+        case CardId::DOOM_AND_GLOOM:
+            addToBot( Actions::AttackAllEnemy(up ? 14 : 10) );
+            addToBot( Actions::ChannelOrb(Orb::DARK) );
+            break;
+
+        case CardId::FTL:
+            addToBot( Actions::FtlAction(t, calculateCardDamage(c, t, up ? 6 : 5), up ? 4 : 3) );
+            break;
+
+        case CardId::GO_FOR_THE_EYES:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 4 : 3)) );
+            addToBot( Actions::ForTheEyesAction(t, up ? 2 : 1) );
+            break;
+
+        case CardId::HYPERBEAM:
+            addToBot( Actions::AttackAllEnemy(up ? 34 : 26) );
+            addToBot( Actions::DebuffPlayer<PS::FOCUS>(-3, false) );
+            break;
+
+        case CardId::MELTER:
+            addToBot( Actions::RemoveAllBlock(t) );
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 14 : 10)) );
+            break;
+
+        case CardId::METEOR_STRIKE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 30 : 24)) );
+            addToBot( Actions::ChannelOrbs(Orb::PLASMA, 3) );
+            break;
+
+        case CardId::REBOUND:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 12 : 9)) );
+            addToBot( Actions::BuffPlayer<PS::REBOUND>(1) );
+            break;
+
+        case CardId::RIP_AND_TEAR:
+            addToBot( Actions::AttackRandomEnemy(up ? 9 : 7, 2) );
+            break;
+
+        case CardId::SCRAPE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 10 : 7)) );
+            addToBot( Actions::ScrapeAction(up ? 5 : 4) );
+            break;
+
+        case CardId::STREAMLINE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 20 : 15)) );
+            addToBot( Actions::ReduceCostAction(c.getUniqueId()) );
+            break;
+
+        case CardId::SUNDER:
+            addToBot( Actions::SunderAction(t, calculateCardDamage(c, t, up ? 32 : 24), 3) );
+            break;
+
+        case CardId::SWEEPING_BEAM:
+            addToBot( Actions::AttackAllEnemy(up ? 9 : 6) );
+            addToBot( Actions::DrawCards(1) );
+            break;
+
+        case CardId::THUNDER_STRIKE:
+            addToBot( Actions::AttackRandomEnemy(up ? 9 : 7, player.lightningChanneled) );
+            break;
+
         default:
 #ifdef sts_asserts
             std::cerr << "attempted to use unimplemented card: " << c.getName() << std::endl;
