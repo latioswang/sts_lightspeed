@@ -103,6 +103,9 @@ bool CardInstance::usesSpecialData() const {
         case CardId::GLASS_KNIFE:
         case CardId::RITUAL_DAGGER:
         case CardId::STEAM_BARRIER:
+        case CardId::EXPUNGER: // how many times it hits
+        case CardId::PERSEVERANCE: // block gained from being retained
+        case CardId::WINDMILL_STRIKE: // damage gained from being retained
             return true;
 
         default:
@@ -326,10 +329,18 @@ bool CardInstance::canUse(const BattleContext &bc, int target, const bool inAuto
             if (getId() == CardId::GRAND_FINALE && !bc.cards.drawPile.empty()) {
                 return false;
             }
+            if (getId() == CardId::SIGNATURE_MOVE) { // no other Attack in hand
+                for (int i = 0; i < bc.cards.cardsInHand; ++i) {
+                    const auto &other = bc.cards.hand[i];
+                    if (other.getType() == CardType::ATTACK && other.getUniqueId() != uniqueId) {
+                        return false;
+                    }
+                }
+            }
             break;
 
         case CardType::SKILL:
-            if (id == CardId::REFLEX || id == CardId::TACTICIAN) {
+            if (id == CardId::REFLEX || id == CardId::TACTICIAN || id == CardId::DEUS_EX_MACHINA) {
                 return false;
 
             } else if (id == CardId::SECRET_TECHNIQUE) {

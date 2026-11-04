@@ -438,6 +438,11 @@ void Monster::attacked(BattleContext &bc, int damage) {
         bc.addToTop( Actions::DamagePlayer(getStatus<MS::THORNS>()) );
     }
 
+    // BlockReturnPower.onAttacked has none either. The types it skips never come through here.
+    if (hasStatus<MS::BLOCK_RETURN>()) {
+        bc.addToTop( Actions::GainBlock(getStatus<MS::BLOCK_RETURN>()) );
+    }
+
     const bool hadBlock = block > 0;
     const int tempDamage = damage;
     damage -= block;

@@ -358,6 +358,28 @@ void search::BattleScumSearcher2::enumerateCardSelectActions(search::BattleScumS
             break;
         }
 
+        case CardSelectTask::SCRY: // offsets from the top of the draw pile, and the screen can close at any point
+            for (int i = bc.cardSelectInfo.data0; i < bc.cardSelectInfo.pickCount; ++i) {
+                node.edges.push_back({search::Action(search::ActionType::SINGLE_CARD_SELECT, i)});
+            }
+            node.edges.push_back({search::Action(search::ActionType::SINGLE_CARD_SELECT, CardSelectInfo::SCRY_DONE_IDX)});
+            break;
+
+        case CardSelectTask::MEDITATE:
+            setupCardOptionsHelper(node, bc.cards.discardPile.begin(), bc.cards.discardPile.end());
+            break;
+
+        case CardSelectTask::OMNISCIENCE:
+            setupCardOptionsHelper(node, bc.cards.drawPile.begin(), bc.cards.drawPile.end());
+            break;
+
+        case CardSelectTask::FOREIGN_INFLUENCE:
+        case CardSelectTask::WISH:
+            for (int i = 0; i < 3; ++i) {
+                node.edges.push_back({search::Action(search::ActionType::SINGLE_CARD_SELECT, i)});
+            }
+            break;
+
         case CardSelectTask::FORETHOUGHT:
         case CardSelectTask::WARCRY:
             setupCardOptionsHelper(node, bc.cards.hand.begin(), bc.cards.hand.begin() + bc.cards.cardsInHand);

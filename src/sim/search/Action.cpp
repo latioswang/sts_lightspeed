@@ -160,6 +160,17 @@ bool isValidSingleCardSelectAction(const BattleContext &bc, const search::Action
             return a.getSelectIdx() == CardSelectInfo::RETAIN_DONE_IDX ||
                    (a.getSelectIdx() >= 0 && a.getSelectIdx() < bc.cards.cardsInHand - bc.cardSelectInfo.data0);
 
+        case CardSelectTask::SCRY:
+            return a.getSelectIdx() == CardSelectInfo::SCRY_DONE_IDX ||
+                   (a.getSelectIdx() >= bc.cardSelectInfo.data0 && a.getSelectIdx() < bc.cardSelectInfo.pickCount);
+
+        case CardSelectTask::OMNISCIENCE:
+            return a.getSelectIdx() >= 0 && a.getSelectIdx() < static_cast<int>(bc.cards.drawPile.size());
+
+        case CardSelectTask::FOREIGN_INFLUENCE:
+        case CardSelectTask::WISH:
+            return a.getSelectIdx() >= 0 && a.getSelectIdx() < 3;
+
         case CardSelectTask::ARMAMENTS:
             if (a.getSelectIdx() < 0 || a.getSelectIdx() >= bc.cards.cardsInHand) {
                 return false;
@@ -419,7 +430,25 @@ void executeSingleCardSelectActionHelper(BattleContext &bc, search::Action a) {
             break;
 
         case CardSelectTask::MEDITATE:
-            // not implemented
+            bc.chooseMeditateCard(idx);
+            break;
+
+        case CardSelectTask::SCRY:
+            bc.chooseScryCard(idx);
+            break;
+
+        case CardSelectTask::OMNISCIENCE:
+            bc.chooseOmniscienceCard(idx);
+            break;
+
+        case CardSelectTask::FOREIGN_INFLUENCE:
+            bc.chooseForeignInfluenceCard(idx);
+            break;
+
+        case CardSelectTask::WISH:
+            bc.chooseWishOption(idx);
+            break;
+
         case CardSelectTask::INVALID:
         default:
             break;
@@ -546,6 +575,28 @@ std::vector<search::Action> search::Action::enumerateCardSelectActions(const Bat
             actions.emplace_back(search::ActionType::SINGLE_CARD_SELECT, CardSelectInfo::RETAIN_DONE_IDX);
             break;
         }
+
+        case CardSelectTask::SCRY: // offsets from the top of the draw pile, and the screen can close at any point
+            for (int i = bc.cardSelectInfo.data0; i < bc.cardSelectInfo.pickCount; ++i) {
+                actions.emplace_back(search::ActionType::SINGLE_CARD_SELECT, i);
+            }
+            actions.emplace_back(search::ActionType::SINGLE_CARD_SELECT, CardSelectInfo::SCRY_DONE_IDX);
+            break;
+
+        case CardSelectTask::MEDITATE:
+            setupCardOptionsHelper(actions, bc.cards.discardPile.begin(), bc.cards.discardPile.end());
+            break;
+
+        case CardSelectTask::OMNISCIENCE:
+            setupCardOptionsHelper(actions, bc.cards.drawPile.begin(), bc.cards.drawPile.end());
+            break;
+
+        case CardSelectTask::FOREIGN_INFLUENCE:
+        case CardSelectTask::WISH:
+            for (int i = 0; i < 3; ++i) {
+                actions.emplace_back(search::ActionType::SINGLE_CARD_SELECT, i);
+            }
+            break;
 
         case CardSelectTask::FORETHOUGHT:
         case CardSelectTask::WARCRY:

@@ -358,6 +358,22 @@ void BattleSimulator::printCardSelectActions(std::ostream &os) const {
             printCardOptionsHelper(os, bc->cards.hand.begin(), bc->cards.hand.begin() + bc->cards.cardsInHand);
             break;
 
+        case CardSelectTask::SCRY:
+            os << "Scry: Choose a card to discard, offset from the top of the draw pile, from " << bc->cardSelectInfo.data0
+               << " up to " << bc->cardSelectInfo.pickCount - 1 << ", or " << CardSelectInfo::SCRY_DONE_IDX << " to stop.\n";
+            break;
+
+        case CardSelectTask::OMNISCIENCE:
+            os << "Omniscience: Choose a card to play.\n";
+            printCardOptionsHelper(os, bc->cards.drawPile.begin(), bc->cards.drawPile.end());
+            break;
+
+        case CardSelectTask::FOREIGN_INFLUENCE:
+        case CardSelectTask::WISH:
+            os << "Choose one: 0 " << getCardName(bc->cardSelectInfo.cards[0]) << ", 1 " << getCardName(bc->cardSelectInfo.cards[1])
+               << ", 2 " << getCardName(bc->cardSelectInfo.cards[2]) << "\n";
+            break;
+
         case CardSelectTask::RETAIN:
             os << "Well-Laid Plans: Choose a card to keep, " << bc->cardSelectInfo.pickCount << " left, or " << CardSelectInfo::RETAIN_DONE_IDX << " to stop.\n";
             printCardOptionsHelper(os, bc->cards.hand.begin(), bc->cards.hand.begin() + bc->cards.cardsInHand - bc->cardSelectInfo.data0);
@@ -488,7 +504,24 @@ void BattleSimulator::takeCardSelectAction(const std::string &action) {
             bc->chooseDiscardToHandCard(std::stoi(action), true);
             break;
 
-        case CardSelectTask::MEDITATE:  // todo
+        case CardSelectTask::MEDITATE:
+            bc->chooseMeditateCard(std::stoi(action));
+            break;
+
+        case CardSelectTask::SCRY:
+            bc->chooseScryCard(std::stoi(action));
+            break;
+
+        case CardSelectTask::OMNISCIENCE:
+            bc->chooseOmniscienceCard(std::stoi(action));
+            break;
+
+        case CardSelectTask::FOREIGN_INFLUENCE:
+            bc->chooseForeignInfluenceCard(std::stoi(action));
+            break;
+
+        case CardSelectTask::WISH:
+            bc->chooseWishOption(std::stoi(action));
             break;
 
         case CardSelectTask::DISCARD:

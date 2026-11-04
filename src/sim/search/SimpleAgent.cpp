@@ -486,6 +486,17 @@ void search::SimpleAgent::stepBattleCardSelect(BattleContext &bc) {
             takeAction(bc, search::Action(search::ActionType::SINGLE_CARD_SELECT, CardSelectInfo::RETAIN_DONE_IDX));
             return;
 
+        case CardSelectTask::SCRY: // keep everything
+            takeAction(bc, search::Action(search::ActionType::SINGLE_CARD_SELECT, CardSelectInfo::SCRY_DONE_IDX));
+            return;
+
+        case CardSelectTask::FOREIGN_INFLUENCE:
+        case CardSelectTask::WISH:
+        case CardSelectTask::MEDITATE:
+        case CardSelectTask::OMNISCIENCE:
+            takeAction(bc, search::Action(search::ActionType::SINGLE_CARD_SELECT, 0));
+            return;
+
         case CardSelectTask::FORETHOUGHT:
         case CardSelectTask::WARCRY:
             setupCardOptionsHelper(actions, bc.cards.hand.begin(), bc.cards.hand.begin() + bc.cards.cardsInHand);

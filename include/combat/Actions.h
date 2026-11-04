@@ -176,6 +176,35 @@ namespace sts {
         static Action StormOfSteelAction(bool upgraded); // BladeFuryAction
         static Action UnloadAction();
 
+        // ************ Watcher cards ************
+
+        static Action ApplyMantra(int amount); // ApplyPowerAction with a MantraPower made earlier
+        static Action ScryAction(int amount);
+        static Action PressEndTurnButton(); // PressEndTurnButtonAction
+        static Action SkipEnemiesTurn(); // SkipEnemiesTurnAction
+        static Action LoseEnergy(int amount); // LoseEnergyAction
+        static Action CollectAction(int effect, bool useEnergy);
+        static Action ConjureBladeAction(int effect, bool useEnergy);
+        static Action CrushJointsAction(int idx, int amount);
+        static Action DevaFormAction();
+        static Action EndTurnDeathAction(); // ApplyPowerAction with an EndTurnDeathPower, which doesn't stack
+        static Action EstablishmentAction(int amount); // EstablishmentPowerAction
+        static Action FearNoEvilAction(int idx, int damage);
+        static Action FollowUpAction();
+        static Action ForeignInfluenceAction(bool upgraded);
+        static Action HaltAction(int block, int additional);
+        static Action HeadStompAction(int idx, int amount); // Sash Whip
+        static Action IndignationAction(int amount);
+        static Action InnerPeaceAction(int amount);
+        static Action JudgementAction(int idx, int cutoff);
+        static Action LessonLearnedAction(int idx, int damage);
+        static Action MeditateAction(int count);
+        static Action OmniscienceAction(int playCount);
+        static Action SanctityAction(int draw);
+        static Action TriggerMarksAction();
+        static Action WallopAction(int idx, int damage);
+        static Action WishAction(bool upgraded); // ChooseOneAction
+
         static Action ExhaustTopCardInHand();
         static Action ExhaustSpecificCardInHand(int idx, std::int16_t uniqueId);
 

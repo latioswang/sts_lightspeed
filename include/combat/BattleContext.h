@@ -64,6 +64,7 @@ namespace sts {
         Random monsterHpRng;
         Random potionRng;
         Random shuffleRng;
+        Random cardRng; // only Foreign Influence rolls it in a fight, through CardGroup.getRandomCard
 
         int ascension = 0;
         Outcome outcome = Outcome::UNDECIDED;
@@ -93,6 +94,11 @@ namespace sts {
 
         std::bitset<32> miscBits; // 0 stolen gold check,
 
+        // Lesson Learned upgrades a random card in the master deck. These are filled in only if the deck holds one.
+        static constexpr std::int16_t SEARING_BLOW_DECK_IDX = 0x4000; // a flag on an entry below: it stays after an upgrade
+        std::vector<std::int16_t> upgradableDeckIdxs;
+        std::vector<std::int16_t> lessonLearnedUpgrades;
+
         BattleContext() = default;
         BattleContext(const BattleContext &rhs) = default;
 
@@ -120,6 +126,7 @@ namespace sts {
         void playCardQueueItem(CardQueueItem);
         void useCard();
         void useNoTriggerCard();
+        void noteCardTypePlayed(CardType type);
 
         void useAttackCard();
         void useSkillCard();
@@ -169,6 +176,12 @@ namespace sts {
         void playTopCardInDrawPile(int monsterTargetIdx, bool exhausts);
 
         void moveToHandHelper(CardInstance c);
+        void upgradeIfMasterReality(CardInstance &c) const; // what MakeTempCard and the card effects do with Master Reality
+        void changeStance(Stance newStance); // ChangeStanceAction
+        void applyMantra(int amount);
+        void queueMantra(int amount);
+        void scry(int amount); // ScryAction
+        void finishScry();
         template <typename F> void forEachInBattleInstance(std::int16_t uniqueId, F f); // GetAllInBattleInstances
         void exhaustSpecificCardInHand(int idx, std::int16_t uniqueId);
         void restoreRetainedCards(int count);
@@ -207,6 +220,11 @@ namespace sts {
         void chooseNightmareCard(int handIdx);
         void chooseRetainCard(int handIdx);
         void chooseSetupCard(int handIdx);
+        void chooseScryCard(int offsetFromTop);
+        void chooseMeditateCard(int discardIdx);
+        void chooseOmniscienceCard(int drawIdx);
+        void chooseForeignInfluenceCard(int choice);
+        void chooseWishOption(int choice);
         void chooseCodexCard(CardId id);
         void chooseDiscardToHandCard(int discardIdx, bool forZeroCost);
         void chooseDiscoveryCard(CardId id);

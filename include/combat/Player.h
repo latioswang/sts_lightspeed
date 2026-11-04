@@ -59,6 +59,12 @@ namespace sts {
         static constexpr int NIGHTMARE_COPIES = 3;
         std::int8_t nightmareCount = 0;
 
+        // GameActionManager.mantraGained, for Brilliance. MantraPower's constructor adds to it, so when a card is played.
+        std::int16_t mantraGained = 0;
+        // The last two of GameActionManager.cardsPlayedThisCombat, for Follow-Up, Crush Joints, Sash Whip and Sanctity.
+        CardType lastCardTypePlayed = CardType::INVALID;
+        CardType previousCardTypePlayed = CardType::INVALID;
+
         // for spire spear/shield
         std::int8_t lastTargetedMonster = 1;
         bool redSkullActive = false;
@@ -72,7 +78,7 @@ namespace sts {
 
         std::uint32_t justAppliedBits = 0;
         std::uint64_t statusBits0 = 0;
-        std::uint32_t statusBits1 = 0;
+        std::uint64_t statusBits1 = 0;
         std::map<PlayerStatus, std::int16_t> statusMap;
 
         // The game's powers list: sorted by priority, and in the order gained within a priority. Powers trigger in this order.

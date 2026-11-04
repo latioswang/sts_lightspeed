@@ -408,6 +408,9 @@ void CardManager::draw(BattleContext &bc, int amount) {
             c.setCostForTurn(c.cost - bc.player.cardsDiscardedThisTurn);
         } else if (c.getId() == CardId::ENDLESS_AGONY) {
             bc.addToTop( Actions::MakeTempCardInHand(c) );
+        } else if (c.getId() == CardId::DEUS_EX_MACHINA) {
+            bc.addToTop( Actions::MakeTempCardInHand(CardId::MIRACLE, false, c.isUpgraded() ? 3 : 2) );
+            bc.addToTop( Actions::ExhaustSpecificCardInHand(cardsInHand, c.getUniqueId()) );
         }
 
         if (bc.player.hasStatus<PS::CONFUSED>()) {

@@ -139,7 +139,11 @@ void Player::gainBlock(BattleContext &bc, int amount) {
         bc.addToBot(Actions::DamageRandomEnemy(getStatus<PS::JUGGERNAUT>()));
     }
 
-    // todo watcher weak power
+    if (hasStatus<PS::WAVE_OF_THE_HAND>()) {
+        for (int i = 0; i < bc.monsters.monsterCount; ++i) {
+            bc.addToBot(Actions::DebuffEnemy<MS::WEAK>(i, getStatus<PS::WAVE_OF_THE_HAND>(), false));
+        }
+    }
 }
 
 void Player::gainGold(BattleContext &bc, int amount) {
@@ -636,7 +640,11 @@ void Player::applyEndOfTurnPowers(BattleContext &bc) {
                 break;
 
             case PS::ESTABLISHMENT:
-                // todo addToBot establishmentPowerAction
+                bc.addToBot(Actions::EstablishmentAction(pair.second));
+                break;
+
+            case PS::STUDY:
+                bc.addToBot(Actions::MakeTempCardInDrawPile(CardInstance(CardId::INSIGHT), pair.second, true));
                 break;
 
             case PS::LOSE_DEXTERITY:
@@ -734,8 +742,8 @@ void Player::applyAtEndOfRoundPowers() {
         decrementStatus<PS::NO_BLOCK>();
     }
 
-    if (hasStatus<PS::WAVE_OF_THE_HAND>()) {
-        decrementStatus<PS::WAVE_OF_THE_HAND>();
+    if (hasStatus<PS::WAVE_OF_THE_HAND>()) { // the whole power goes, not one of its stacks
+        removeStatus<PS::WAVE_OF_THE_HAND>();
     }
 }
 
@@ -763,8 +771,7 @@ void Player::applyStartOfTurnRelics(BattleContext &bc) {
     }
 
     if (hasRelic<R::DAMARU>()) {
-        bc.addToBot( Actions::BuffPlayer<PS::MANTRA>(1) );
-        // todo handle mantra change stance
+        bc.queueMantra(1);
     }
 
     if (hasRelic<R::EMOTION_CHIP>()) {
@@ -824,7 +831,9 @@ void Player::applyStartOfTurnPowers(BattleContext &bc) {
 
         switch (pair.first) {
             case PS::BATTLE_HYMN:
-                bc.addToBot(Actions::MakeTempCardInHand(CardId::SMITE, hasStatus<PS::MASTER_REALITY>(), pair.second) );
+                if (!bc.monsters.areMonstersBasicallyDead()) {
+                    bc.addToBot(Actions::MakeTempCardInHand(CardId::SMITE, false, pair.second) );
+                }
                 break;
 
             case PS::BIAS: // an ApplyPowerAction with a negative FocusPower, so Artifact stops it
@@ -841,20 +850,21 @@ void Player::applyStartOfTurnPowers(BattleContext &bc) {
                 echoFormCardsDoubled = 0;
                 break;
 
-            case PS::BLASPHEMER:
+            case PS::BLASPHEMER: // HP loss: Intangible holds it to 1 and Buffer stops it, and the power goes anyway
                 removeStatus<PS::BLASPHEMER>();
-                bc.addToBot( Actions::PlayerLoseHp(9999) );
+                bc.addToBot( Actions::PlayerLoseHp(99999, true) );
                 break;
 
-            case PS::FASTING:
-                //  add energy dont need? just change energy per turn instead
+            case PS::FASTING: // the game's EnergyDownPower. The energy for the turn has been set by the time this runs.
+                bc.addToBot( Actions::LoseEnergy(pair.second) );
                 break;
 
             case PS::FORESIGHT:
-                if (bc.cards.drawPile.empty()) {
-                    bc.addToTop( Actions::SetState(InputState::SHUFFLE_DISCARD_TO_DRAW) );
+                if (bc.cards.drawPile.empty()) { // EmptyDeckShuffleAction's constructor runs the relics' onShuffle
+                    bc.onShuffle();
+                    bc.addToBot( Actions::EmptyDeckShuffle() );
                 }
-//                bc.addToBot( Actions::SetState(InputState::SCRY, pair.second) ); // tood
+                bc.addToBot( Actions::ScryAction(pair.second) );
                 break;
 
             case PS::FLAME_BARRIER:
@@ -963,8 +973,12 @@ void Player::applyStartOfTurnPostDrawPowers(BattleContext &bc) {
                 bc.addToBot( Actions::BuffPlayer<PS::STRENGTH>(pair.second) );
                 break;
 
-            case PS::DEVOTION: // the implementation of this is really weird in the game code
-                bc.addToBot( Actions::BuffPlayer<PS::MANTRA>(pair.second) ); // todo make buffing mantra switch stance
+            case PS::DEVOTION: // with no Mantra yet and 10 or more to give, it goes straight to Divinity and gives no Mantra
+                if (!hasStatus<PS::MANTRA>() && pair.second >= 10) {
+                    bc.addToBot( Actions::ChangeStance(Stance::DIVINITY) );
+                } else {
+                    bc.queueMantra(pair.second);
+                }
                 break;
 
             case PS::DRAW_CARD_NEXT_TURN:
@@ -997,7 +1011,7 @@ void Player::rechargeEnergy(BattleContext &bc) {
     // ****** Player powers onEnergyRecharge ******
     if (hasStatus<PS::COLLECT>()) {
         decrementStatus<PS::COLLECT>();
-        bc.addToBot(Actions::MakeTempCardInHand(CardId::MIRACLE) );
+        bc.addToBot(Actions::MakeTempCardInHand(CardId::MIRACLE, true) );
     }
 
     if (hasStatus<PS::DEVA>()) {

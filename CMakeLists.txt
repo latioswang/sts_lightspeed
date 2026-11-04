@@ -42,6 +42,9 @@ target_link_libraries(test_defect_cards stscore)
 add_executable(test_silent_cards EXCLUDE_FROM_ALL apps/test_silent_cards.cpp)
 target_include_directories(test_silent_cards PUBLIC include json/single_include)
 target_link_libraries(test_silent_cards stscore)
+add_executable(test_watcher_cards EXCLUDE_FROM_ALL apps/test_watcher_cards.cpp)
+target_include_directories(test_watcher_cards PUBLIC include json/single_include)
+target_link_libraries(test_watcher_cards stscore)
 
 # ---- research additions (leak-free agent + frozen eval) ----
 set(STS_RESEARCH_DIR /home/user/sts/research CACHE PATH "research/ directory of the latioswang/sts checkout")

@@ -153,7 +153,9 @@ Action Actions::NoOpRollMove() {
 }
 
 Action Actions::ChangeStance(Stance stance) {
-    return sts::Action();
+    return {[=] (BattleContext &bc) {
+        bc.changeStance(stance);
+    }};
 }
 
 Action Actions::GainEnergy(int amount) {
@@ -245,6 +247,7 @@ Action Actions::MakeTempCardInHand(CardInstance card, int amount) {
     return {[=](BattleContext &bc) {
         for (int i = 0; i < amount; ++i) {
             CardInstance c(card);
+            bc.upgradeIfMasterReality(c);
             c.uniqueId = bc.cards.nextUniqueCardId++;
             bc.cards.notifyAddCardToCombat(c);
             bc.moveToHandHelper(c);
@@ -255,12 +258,14 @@ Action Actions::MakeTempCardInHand(CardInstance card, int amount) {
 Action Actions::MakeTempCardInDrawPile(const CardInstance &c, int amount, bool shuffleInto) {
     // the random calculation is done in an effect so it be wrong to do it here?
     return {[=](BattleContext &bc) {
+        CardInstance card(c);
+        bc.upgradeIfMasterReality(card);
         for (int i = 0; i < amount; ++i) {
             if (shuffleInto) {
                 const int idx = bc.cards.drawPile.empty() ? 0 : bc.cardRandomRng.random(static_cast<int>(bc.cards.drawPile.size()-1));
-                bc.cards.createTempCardInDrawPile(idx, c);
+                bc.cards.createTempCardInDrawPile(idx, card);
             } else {
-                bc.cards.createTempCardInDrawPile(static_cast<int>(bc.cards.drawPile.size()), c);
+                bc.cards.createTempCardInDrawPile(static_cast<int>(bc.cards.drawPile.size()), card);
             }
         }
     }};
@@ -282,8 +287,10 @@ Action Actions::BurnIncrease() {
 Action Actions::MakeTempCardInDiscard(const CardInstance &c, int amount) {
     CardInstance c_copy(c);
     return {[=](BattleContext &bc) { // todo maybe store by reference instead of copy if CardInstance is too big to fit directly in the lambda. Make a seperate space where the card will be stored
+        CardInstance card(c_copy);
+        bc.upgradeIfMasterReality(card);
         for (int i = 0; i < amount; ++i) {
-            bc.cards.createTempCardInDiscard(c_copy);
+            bc.cards.createTempCardInDiscard(card);
         }
     }};
 }
@@ -291,6 +298,7 @@ Action Actions::MakeTempCardInDiscard(const CardInstance &c, int amount) {
 Action Actions::MakeTempCardsInHand(std::vector<CardInstance> cards) {
     return {[=](BattleContext &bc) {
         for (auto c : cards) {
+            bc.upgradeIfMasterReality(c);
             c.uniqueId = bc.cards.nextUniqueCardId++;
             bc.cards.notifyAddCardToCombat(c);
             bc.moveToHandHelper(c);
@@ -1329,6 +1337,7 @@ Action Actions::PutRandomCardsInDrawPile(CardType type, int count) {
 
         for (int i = 0; i < count; ++i) {
             CardInstance card(ids[i], false);
+            bc.upgradeIfMasterReality(card);
             if (card.cost > 0) {
                 card.cost = 0;
                 card.costForTurn = 0;

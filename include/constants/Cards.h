@@ -769,6 +769,14 @@ namespace sts {
             case CardId::PREPARED:
             case CardId::SHIV:
             case CardId::SLICE:
+            case CardId::CONSECRATE:
+            case CardId::FLURRY_OF_BLOWS:
+            case CardId::FOREIGN_INFLUENCE:
+            case CardId::HALT:
+            case CardId::JUST_LUCKY:
+            case CardId::PROSTRATE:
+            case CardId::THROUGH_VIOLENCE:
+            case CardId::WEAVE:
                 return 0;
 
             case CardId::DEFEND_BLUE:
@@ -786,7 +794,6 @@ namespace sts {
                 return 1;
 
             case CardId::BASH:
-            case CardId::BETA:
             case CardId::CARNAGE:
             case CardId::CHRYSALIS:
             case CardId::CLOTHESLINE:
@@ -825,6 +832,18 @@ namespace sts {
             case CardId::PREDATOR:
             case CardId::RIDDLE_WITH_HOLES:
             case CardId::SNEAKY_STRIKE:
+            case CardId::FASTING:
+            case CardId::LESSON_LEARNED:
+            case CardId::PROTECT:
+            case CardId::REACH_HEAVEN:
+            case CardId::SIGNATURE_MOVE:
+            case CardId::SPIRIT_SHIELD:
+            case CardId::SWIVEL:
+            case CardId::VIGILANCE:
+            case CardId::WALLOP:
+            case CardId::WHEEL_KICK:
+            case CardId::WINDMILL_STRIKE:
+            case CardId::WORSHIP:
                 return 2;
 
             case CardId::BARRICADE:
@@ -839,7 +858,24 @@ namespace sts {
             case CardId::SUNDER:
             case CardId::THUNDER_STRIKE:
             case CardId::EVISCERATE:
+            case CardId::DEVA_FORM:
+            case CardId::RAGNAROK:
+            case CardId::WISH:
                 return 3;
+
+            case CardId::VAULT:
+                return upgraded ? 2 : 3;
+
+            case CardId::OMNISCIENCE:
+                return upgraded ? 3 : 4;
+
+            case CardId::SANDS_OF_TIME:
+                return 4;
+
+            case CardId::BETA:
+            case CardId::ERUPTION:
+            case CardId::STUDY:
+                return upgraded ? 1 : 2;
 
             case CardId::BULLET_TIME:
             case CardId::CREATIVE_AI:
@@ -885,6 +921,11 @@ namespace sts {
             case CardId::SETUP:
             case CardId::TERROR:
             case CardId::TOOLS_OF_THE_TRADE:
+            case CardId::CRESCENDO:
+            case CardId::MASTER_REALITY:
+            case CardId::RUSHDOWN:
+            case CardId::SCRAWL:
+            case CardId::TRANQUILITY:
                 return upgraded ? 0 : 1;
 
 
@@ -896,6 +937,8 @@ namespace sts {
             case CardId::TEMPEST:
             case CardId::DOPPELGANGER:
             case CardId::SKEWER:
+            case CardId::COLLECT:
+            case CardId::CONJURE_BLADE:
                 return -1;
 
             case CardId::BURN:
@@ -904,6 +947,10 @@ namespace sts {
             case CardId::WOUND:
             case CardId::REFLEX:
             case CardId::TACTICIAN:
+            case CardId::DEUS_EX_MACHINA:
+            case CardId::BECOME_ALMIGHTY:
+            case CardId::FAME_AND_FORTUNE:
+            case CardId::LIVE_FOREVER:
                 return -2;
 
             case CardId::ASCENDERS_BANE:
