@@ -1521,6 +1521,10 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
                 if (bc.player.hasRelic<R::DARKSTONE_PERIAPT>()) {
                     bc.player.increaseMaxHp(6);
                 }
+                // The deck gets its Parasite when the fight ends, and the player's gold overwrites the run's then.
+                if (bc.player.hasRelic<R::CERAMIC_FISH>()) {
+                    bc.player.gainGold(bc, 9);
+                }
             }
             rollMove(bc);
             break;
