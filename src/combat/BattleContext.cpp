@@ -77,6 +77,8 @@ void BattleContext::init(const GameContext &gc, MonsterEncounter encounterToInit
     }
     //addToBot(Actions::DrawCards(player.cardDrawPerTurn));
 
+    player.orbSlots = gc.masterMaxOrbs; // AbstractPlayer.preBattlePrep
+
     cards.init(gc, *this);
 
     initRelics(gc);
@@ -266,7 +268,7 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::CRACKED_CORE:
-                p.channelOrb(Orb::LIGHTNING);
+                p.channelOrb(*this, Orb::LIGHTNING);
                 break;
 
             case R::CURSED_KEY:
@@ -325,7 +327,7 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::NUCLEAR_BATTERY:
-                p.channelOrb(Orb::FUSION);
+                p.channelOrb(*this, Orb::PLASMA);
                 break;
 
             case R::ODDLY_SMOOTH_STONE:
@@ -369,7 +371,7 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::SYMBIOTIC_VIRUS:
-                p.channelOrb(Orb::DARK);
+                p.channelOrb(*this, Orb::DARK);
                 break;
 
             case R::TEARDROP_LOCKET:
@@ -508,6 +510,7 @@ void BattleContext::exitBattle(GameContext &g) const {
     g.curHp = player.curHp;
     g.maxHp = player.maxHp;
     g.gold = player.gold;
+    g.powersPlayedLastCombat = player.powersPlayedThisCombat;
 
 
     // todo lesson learned bitset
@@ -2119,7 +2122,7 @@ void BattleContext::callEndOfTurnActions() {
 
     if (player.hasRelic<R::FROZEN_CORE>()) {
         if (player.hasEmptyOrb()) {
-            player.channelOrb(Orb::FROST);
+            player.channelOrb(*this, Orb::FROST);
         }
     }
 
@@ -2259,8 +2262,12 @@ void BattleContext::afterMonsterTurns() {
     player.applyStartOfTurnPowers(*(this));
 
     // player.applyStartOfTurnOrbs()
-    //for each orb : OnStartOfTurn
-    //if have relic cables: apply orb[0].OnStartOfTurn again
+    for (int i = 0; i < player.orbSlots; ++i) {
+        player.orbOnStartOfTurn(*this, i);
+    }
+    if (player.hasRelic<R::GOLD_PLATED_CABLES>() && player.hasOrb()) {
+        player.orbOnStartOfTurn(*this, 0);
+    }
 
     if (player.hasStatus<PS::BARRICADE>()) {
 
@@ -2858,6 +2865,8 @@ int BattleContext::calculateCardBlock(int baseBlock) const {
         block = std::max(0, block + player.getStatus<PS::DEXTERITY>());
     }
 
+    block = std::max(0, block); // Steam Barrier's base block can go below 0
+
     if (player.hasStatus<PS::FRAIL>()) {
         return block * 3 / 4;
     }
@@ -3158,7 +3167,15 @@ void BattleContext::chooseHeadbuttCard(int discardIdx) {
 }
 
 void BattleContext::chooseRecycleCard(int handIdx) {
-    // todo
+    const CardInstance c = cards.hand[handIdx];
+    if (c.costForTurn == -1) {
+        addToTop( Actions::GainEnergy(player.energy) );
+    } else if (c.costForTurn > 0) {
+        addToTop( Actions::GainEnergy(c.costForTurn) );
+    }
+    cards.removeFromHandAtIdx(handIdx);
+    triggerAndMoveToExhaustPile(c);
+    cards.onCardDrawOrDiscard(*this);
 }
 
 void BattleContext::chooseWarcryCard(int handIdx) {

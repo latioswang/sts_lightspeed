@@ -169,6 +169,7 @@ namespace sts {
         void playTopCardInDrawPile(int monsterTargetIdx, bool exhausts);
 
         void moveToHandHelper(CardInstance c);
+        template <typename F> void forEachInBattleInstance(std::int16_t uniqueId, F f); // GetAllInBattleInstances
         void exhaustSpecificCardInHand(int idx, std::int16_t uniqueId);
         void restoreRetainedCards(int count);
         void exhaustTopCardInHand();
@@ -247,6 +248,40 @@ namespace sts {
         return {[=] (BattleContext &bc) {
             bc.player.setHasStatus<s>(false);
         }};
+    }
+
+    // The game's limbo holds the copies waiting in the card queue.
+    template <typename F>
+    void BattleContext::forEachInBattleInstance(std::int16_t uniqueId, F f) {
+        if (curCardQueueItem.card.getUniqueId() == uniqueId) {
+            f(curCardQueueItem.card);
+        }
+        for (auto &c : cards.drawPile) {
+            if (c.getUniqueId() == uniqueId) {
+                f(c);
+            }
+        }
+        for (auto &c : cards.discardPile) {
+            if (c.getUniqueId() == uniqueId) {
+                f(c);
+            }
+        }
+        for (auto &c : cards.exhaustPile) {
+            if (c.getUniqueId() == uniqueId) {
+                f(c);
+            }
+        }
+        for (int i = 0; i < cardQueue.size; ++i) {
+            auto &c = cardQueue.arr[(cardQueue.frontIdx + i) % CardQueue::capacity].card;
+            if (c.getUniqueId() == uniqueId) {
+                f(c);
+            }
+        }
+        for (int i = 0; i < cards.cardsInHand; ++i) {
+            if (cards.hand[i].getUniqueId() == uniqueId) {
+                f(cards.hand[i]);
+            }
+        }
     }
 
     template<MonsterStatus s>

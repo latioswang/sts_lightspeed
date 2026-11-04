@@ -59,6 +59,7 @@ GameContext::GameContext(CharacterClass cc, std::uint64_t seed, int ascension)
                                        EventPools::oneTimeEventsAsc15.end());
     }
 
+    masterMaxOrbs = cc == CharacterClass::DEFECT ? 3 : 0;
     generateMonsters();
     initRelics();
     initPlayer();
@@ -1453,7 +1454,9 @@ bool GameContext::obtainRelic(RelicId r) {
             break;
 
         case RelicId::PRISMATIC_SHARD: {
-            // todo if not defect: masterMaxOrbs = 1
+            if (cc != CharacterClass::DEFECT && masterMaxOrbs == 0) {
+                masterMaxOrbs = 1;
+            }
             break;
         }
 

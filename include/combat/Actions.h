@@ -108,6 +108,46 @@ namespace sts {
         static Action MonsterStartTurnAction();
         static Action TriggerEndOfTurnOrbsAction();
 
+        // ************ Orbs ************
+
+        static Action ChannelOrb(Orb orb, int darkEvoke=6, bool autoEvoke=true); // ChannelAction; without autoEvoke it needs a free slot
+        static Action ChannelOrbs(Orb orb, int count); // that many ChannelActions, without filling the queue (Tempest)
+        static Action EvokeOrb(); // EvokeOrbAction
+        static Action EvokeWithoutRemovingOrb();
+        static Action EvokeAllOrbs();
+        static Action RemoveAllOrbs();
+        static Action LightningOrbDamage(int amount, bool hitAll); // LightningOrbEvokeAction and LightningOrbPassiveAction
+        static Action DarkOrbDamage(int targetIdx, int amount);
+        static Action DarkImpulseAction(); // Darkness+
+        static Action DecreaseOrbSlots(int count);
+
+        // ************ Other Defect cards ************
+
+        static Action AllCostToHandAction(int cost); // All For One
+        static Action DiscardToHandAction(std::int16_t uniqueId);
+        static Action AttackRandomEnemy(int baseDamage, int count); // Thunder Strike, Rip and Tear
+        static Action BarrageAction(int targetIdx, int damage);
+        static Action CompileDriverAction(int cardsPerOrb);
+        static Action ForTheEyesAction(int targetIdx, int weak);
+        static Action FissionAction(bool upgraded);
+        static Action FtlAction(int targetIdx, int damage, int cardPlayCount);
+        static Action GashAction(int amount); // Claw
+        static Action GainBlockTimes(int amount, int count);
+        static Action IncreaseMiscAction(std::int16_t uniqueId, int amount); // Genetic Algorithm
+        static Action ModifyBlockAction(std::int16_t uniqueId); // Steam Barrier
+        static Action MulticastAction(int energy, bool upgraded, bool useEnergy);
+        static Action MulticastEvoke(int remaining);
+        static Action RebootShuffleAll();
+        static Action RecursionAction();
+        static Action RecycleAction();
+        static Action ReduceCostAction(std::int16_t uniqueId); // Streamline
+        static Action ReinforcedBodyAction(int block, int energy, bool useEnergy);
+        static Action RemoveAllBlock(int targetIdx); // Melter
+        static Action ScrapeAction(int amount);
+        static Action SeekAction(int count);
+        static Action SunderAction(int targetIdx, int damage, int energy);
+        static Action TempestAction(int energy, bool upgraded, bool useEnergy);
+
         static Action ExhaustTopCardInHand();
         static Action ExhaustSpecificCardInHand(int idx, std::int16_t uniqueId);
 

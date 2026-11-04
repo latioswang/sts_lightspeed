@@ -354,7 +354,468 @@ Action Actions::MonsterStartTurnAction() {
 
 Action Actions::TriggerEndOfTurnOrbsAction() {
     return {[] (BattleContext &bc) {
-        // todo
+        auto &p = bc.player;
+        for (int i = 0; i < p.orbSlots; ++i) {
+            p.orbOnEndOfTurn(bc, i);
+        }
+        if (p.hasRelic<R::GOLD_PLATED_CABLES>() && p.hasOrb()) {
+            p.orbOnEndOfTurn(bc, 0);
+        }
+    }};
+}
+
+Action Actions::ChannelOrb(Orb orb, int darkEvoke, bool autoEvoke) {
+    return {[=] (BattleContext &bc) {
+        if (autoEvoke || bc.player.hasEmptyOrb()) {
+            bc.player.channelOrb(bc, orb, darkEvoke);
+        }
+    }};
+}
+
+// The game queues them all at once. Taking one at a time from the front gives the same order and keeps the queue short.
+Action Actions::ChannelOrbs(Orb orb, int count) {
+    return {[=] (BattleContext &bc) {
+        if (count > 1) {
+            bc.addToTop( Actions::ChannelOrbs(orb, count-1) );
+        }
+        if (count > 0) {
+            bc.player.channelOrb(bc, orb);
+        }
+    }};
+}
+
+Action Actions::EvokeOrb() {
+    return {[] (BattleContext &bc) {
+        bc.player.evokeOrb(bc);
+    }};
+}
+
+Action Actions::EvokeWithoutRemovingOrb() {
+    return {[] (BattleContext &bc) {
+        bc.player.evokeWithoutLosingOrb(bc);
+    }};
+}
+
+Action Actions::EvokeAllOrbs() {
+    return {[] (BattleContext &bc) {
+        for (int i = 0; i < bc.player.orbSlots; ++i) {
+            bc.addToTop( Actions::EvokeOrb() );
+        }
+    }};
+}
+
+Action Actions::RemoveAllOrbs() {
+    return {[] (BattleContext &bc) {
+        while (bc.player.hasOrb()) {
+            bc.player.removeNextOrb();
+        }
+    }};
+}
+
+namespace {
+    // AbstractOrb.applyLockOn
+    int applyLockOn(const Monster &m, int amount) {
+        return m.hasStatus<MS::LOCK_ON>() ? static_cast<int>(static_cast<float>(amount) * 1.5f) : amount;
+    }
+}
+
+// Orb damage has type THORNS, so it's Monster::damage and not Monster::attacked.
+Action Actions::LightningOrbDamage(int amount, bool hitAll) {
+    return {[=] (BattleContext &bc) {
+        if (hitAll) {
+            int damage[5];
+            for (int i = 0; i < bc.monsters.monsterCount; ++i) { // DamageInfo.createDamageMatrix takes Lock-On first
+                damage[i] = applyLockOn(bc.monsters.arr[i], amount);
+            }
+            for (int i = 0; i < bc.monsters.monsterCount; ++i) {
+                if (!bc.monsters.arr[i].isDeadOrEscaped()) {
+                    bc.monsters.arr[i].damage(bc, damage[i]);
+                }
+            }
+            bc.checkCombat();
+            return;
+        }
+
+        const int idx = bc.monsters.getRandomMonsterIdx(bc.cardRandomRng, true);
+        if (idx != -1) {
+            bc.monsters.arr[idx].damage(bc, applyLockOn(bc.monsters.arr[idx], amount));
+            bc.checkCombat();
+        }
+    }};
+}
+
+Action Actions::DarkOrbDamage(int targetIdx, int amount) {
+    return {[=] (BattleContext &bc) {
+        auto &m = bc.monsters.arr[targetIdx];
+        if (!m.isDeadOrEscaped()) {
+            m.damage(bc, applyLockOn(m, amount));
+            bc.checkCombat();
+        }
+    }};
+}
+
+Action Actions::DarkImpulseAction() {
+    return {[] (BattleContext &bc) {
+        auto &p = bc.player;
+        for (int i = 0; i < p.orbSlots; ++i) {
+            if (p.orbs[i] == Orb::DARK) {
+                p.orbOnEndOfTurn(bc, i);
+            }
+        }
+        if (p.hasRelic<R::GOLD_PLATED_CABLES>() && p.orbSlots > 0 && p.orbs[0] == Orb::DARK) {
+            p.orbOnEndOfTurn(bc, 0);
+        }
+    }};
+}
+
+Action Actions::DecreaseOrbSlots(int count) {
+    return {[=] (BattleContext &bc) {
+        bc.player.decreaseOrbSlots(count);
+    }};
+}
+
+Action Actions::AllCostToHandAction(int cost) {
+    return {[=] (BattleContext &bc) {
+        for (const auto &c : bc.cards.discardPile) {
+            if (c.cost == cost || c.freeToPlayOnce) {
+                bc.addToBot( Actions::DiscardToHandAction(c.getUniqueId()) );
+            }
+        }
+    }};
+}
+
+Action Actions::DiscardToHandAction(std::int16_t uniqueId) {
+    return {[=] (BattleContext &bc) {
+        if (bc.cards.cardsInHand >= CardManager::MAX_HAND_SIZE) {
+            return; // it stays where it is
+        }
+        for (int i = 0; i < bc.cards.discardPile.size(); ++i) {
+            if (bc.cards.discardPile[i].getUniqueId() == uniqueId) {
+                const CardInstance c = bc.cards.discardPile[i];
+                bc.cards.removeFromDiscard(i);
+                bc.cards.moveToHand(c);
+                return;
+            }
+        }
+    }};
+}
+
+Action Actions::AttackRandomEnemy(int baseDamage, int count) {
+    return {[=] (BattleContext &bc) {
+        if (count > 1) {
+            bc.addToTop( Actions::AttackRandomEnemy(baseDamage, count-1) );
+        }
+        if (count > 0) {
+            const int idx = bc.monsters.getRandomMonsterIdx(bc.cardRandomRng, true);
+            if (idx != -1) {
+                bc.addToTop( Actions::AttackEnemy(idx, bc.calculateCardDamage(bc.curCardQueueItem.card, idx, baseDamage)) );
+            }
+        }
+    }};
+}
+
+Action Actions::BarrageAction(int targetIdx, int damage) {
+    return {[=] (BattleContext &bc) {
+        const int orbCount = bc.player.filledOrbCount();
+        for (int i = 0; i < orbCount; ++i) {
+            bc.addToTop( Actions::AttackEnemy(targetIdx, damage) );
+        }
+    }};
+}
+
+Action Actions::CompileDriverAction(int cardsPerOrb) {
+    return {[=] (BattleContext &bc) {
+        int kinds = 0;
+        std::bitset<8> seen;
+        for (int i = 0; i < bc.player.filledOrbCount(); ++i) {
+            const auto kind = static_cast<int>(bc.player.orbs[i]);
+            if (!seen.test(kind)) {
+                seen.set(kind);
+                ++kinds;
+            }
+        }
+        if (kinds * cardsPerOrb > 0) {
+            bc.addToTop( Actions::DrawCards(kinds * cardsPerOrb) );
+        }
+    }};
+}
+
+Action Actions::ForTheEyesAction(int targetIdx, int weak) {
+    return {[=] (BattleContext &bc) {
+        if (bc.monsters.arr[targetIdx].isAttacking()) {
+            bc.addToTop( Actions::DebuffEnemy<MS::WEAK>(targetIdx, weak, false) );
+        }
+    }};
+}
+
+Action Actions::FissionAction(bool upgraded) {
+    return {[=] (BattleContext &bc) {
+        const int orbCount = bc.player.filledOrbCount();
+        bc.addToTop( Actions::DrawCards(orbCount) );
+        bc.addToTop( Actions::GainEnergy(orbCount) );
+        bc.addToTop( upgraded ? Actions::EvokeAllOrbs() : Actions::RemoveAllOrbs() );
+    }};
+}
+
+// FTLAction queues the hit behind the card's UseCardAction, and the draw ahead of it.
+Action Actions::FtlAction(int targetIdx, int damage, int cardPlayCount) {
+    return {[=] (BattleContext &bc) {
+        bc.addToBot( Actions::AttackEnemy(targetIdx, damage) );
+        if (bc.player.cardsPlayedThisTurn - 1 < cardPlayCount) {
+            bc.addToTop( Actions::DrawCards(1) );
+        }
+    }};
+}
+
+// GashAction goes through the card being played and the three piles. A copy waiting in limbo isn't in any of them.
+Action Actions::GashAction(int amount) {
+    return {[=] (BattleContext &bc) {
+        bc.curCardQueueItem.card.specialData += amount;
+        for (auto &c : bc.cards.discardPile) {
+            if (c.getId() == CardId::CLAW) {
+                c.specialData += amount;
+            }
+        }
+        for (auto &c : bc.cards.drawPile) {
+            if (c.getId() == CardId::CLAW) {
+                c.specialData += amount;
+            }
+        }
+        for (int i = 0; i < bc.cards.cardsInHand; ++i) {
+            if (bc.cards.hand[i].getId() == CardId::CLAW) {
+                bc.cards.hand[i].specialData += amount;
+            }
+        }
+    }};
+}
+
+Action Actions::GainBlockTimes(int amount, int count) {
+    return {[=] (BattleContext &bc) {
+        if (count > 1) {
+            bc.addToTop( Actions::GainBlockTimes(amount, count-1) );
+        }
+        if (count > 0) {
+            bc.player.gainBlock(bc, amount);
+        }
+    }, false};
+}
+
+Action Actions::IncreaseMiscAction(std::int16_t uniqueId, int amount) {
+    return {[=] (BattleContext &bc) {
+        bc.forEachInBattleInstance(uniqueId, [=] (CardInstance &c) { c.specialData += amount; });
+    }};
+}
+
+Action Actions::ModifyBlockAction(std::int16_t uniqueId) {
+    return {[=] (BattleContext &bc) {
+        bc.forEachInBattleInstance(uniqueId, [] (CardInstance &c) { ++c.specialData; }); // how much block it has lost
+    }};
+}
+
+Action Actions::MulticastAction(int energy, bool upgraded, bool useEnergy) {
+    return {[=] (BattleContext &bc) {
+        // With no orb nothing happens at all, and the energy is kept.
+        if (!bc.player.hasOrb()) {
+            return;
+        }
+        const int effect = energy + (bc.player.hasRelic<R::CHEMICAL_X>() ? 2 : 0) + (upgraded ? 1 : 0);
+        if (effect > 0) {
+            bc.addToBot( Actions::MulticastEvoke(effect) );
+            if (useEnergy) {
+                bc.player.useEnergy(bc.player.energy);
+            }
+        }
+    }};
+}
+
+Action Actions::MulticastEvoke(int remaining) {
+    return {[=] (BattleContext &bc) {
+        if (remaining > 1) {
+            bc.addToTop( Actions::MulticastEvoke(remaining-1) );
+            bc.player.evokeWithoutLosingOrb(bc);
+        } else {
+            bc.player.evokeOrb(bc);
+        }
+    }};
+}
+
+// ShuffleAllAction: the shuffled discard pile lands on the draw pile first, since Soul.shuffle adds each card when it sets
+// off. Then PutOnDeckAction moves the hand on top in a random order, rolling cardRandomRng for each card.
+Action Actions::RebootShuffleAll() {
+    return {[] (BattleContext &bc) {
+        java::Collections::shuffle(
+                bc.cards.discardPile.begin(),
+                bc.cards.discardPile.end(),
+                java::Random(bc.shuffleRng.randomLong())
+        );
+        bc.cards.moveDiscardPileIntoToDrawPile();
+
+        while (bc.cards.cardsInHand > 0) {
+            const int idx = bc.cardRandomRng.random(bc.cards.cardsInHand-1);
+            const CardInstance c = bc.cards.hand[idx];
+            bc.cards.removeFromHandAtIdx(idx);
+            bc.cards.moveToDrawPileTop(c);
+        }
+    }};
+}
+
+Action Actions::RecursionAction() {
+    return {[] (BattleContext &bc) {
+        auto &p = bc.player;
+        if (!p.hasOrb()) {
+            return;
+        }
+        // RedoAction puts the same orb object back, so Dark keeps what it has built up.
+        bc.addToTop( Actions::ChannelOrb(p.orbs[0], p.darkOrbEvoke[0], false) );
+        bc.addToTop( Actions::EvokeOrb() );
+    }};
+}
+
+Action Actions::RecycleAction() {
+    return {[] (BattleContext &bc) {
+        if (bc.cards.cardsInHand == 0) {
+            return;
+        }
+        if (bc.cards.cardsInHand == 1) {
+            bc.chooseRecycleCard(0);
+        } else {
+            bc.openSimpleCardSelectScreen(CardSelectTask::RECYCLE, 1);
+        }
+    }};
+}
+
+Action Actions::ReduceCostAction(std::int16_t uniqueId) {
+    return {[=] (BattleContext &bc) {
+        bc.forEachInBattleInstance(uniqueId, [] (CardInstance &c) { c.modifyCostForCombat(-1); });
+    }};
+}
+
+Action Actions::ReinforcedBodyAction(int block, int energy, bool useEnergy) {
+    return {[=] (BattleContext &bc) {
+        const int effect = energy + (bc.player.hasRelic<R::CHEMICAL_X>() ? 2 : 0);
+        if (effect > 0) {
+            bc.addToBot( Actions::GainBlockTimes(block, effect) );
+            if (useEnergy) {
+                bc.player.useEnergy(bc.player.energy);
+            }
+        }
+    }};
+}
+
+Action Actions::RemoveAllBlock(int targetIdx) {
+    return {[=] (BattleContext &bc) {
+        auto &m = bc.monsters.arr[targetIdx];
+        if (!m.isDying()) {
+            m.block = 0;
+        }
+    }};
+}
+
+namespace {
+    typedef std::array<std::int16_t, CardManager::MAX_HAND_SIZE> DrawnCards;
+
+    // ScrapeFollowUpAction
+    void scrapeFollowUp(BattleContext &bc, const DrawnCards &drawn, int drawnCount) {
+        for (int d = 0; d < drawnCount; ++d) {
+            for (int i = 0; i < bc.cards.cardsInHand; ++i) {
+                const CardInstance c = bc.cards.hand[i];
+                if (c.getUniqueId() != drawn[d]) {
+                    continue;
+                }
+                if (c.costForTurn != 0 && !c.freeToPlayOnce) {
+                    bc.cards.removeFromHandAtIdx(i);
+                    bc.cards.moveToDiscardPile(c);
+                    bc.cards.onCardDrawOrDiscard(bc);
+                    bc.onManualDiscard(c);
+                    ++bc.player.cardsDiscardedThisTurn;
+                }
+                break;
+            }
+        }
+    }
+
+    void drawAndRemember(BattleContext &bc, int amount, DrawnCards &drawn, int &drawnCount) {
+        bc.drawCards(amount);
+        for (int i = bc.cards.cardsInHand - amount; i < bc.cards.cardsInHand; ++i) {
+            drawn[drawnCount++] = bc.cards.hand[i].getUniqueId();
+        }
+    }
+
+    // DrawCardAction with a follow-up: what's drawn before a shuffle counts with what's drawn after it.
+    Action scrapeDraw(int amount, DrawnCards drawnSoFar, int drawnCountSoFar) {
+        return {[=] (BattleContext &bc) {
+            DrawnCards drawn = drawnSoFar;
+            int drawnCount = drawnCountSoFar;
+            const int deckSize = static_cast<int>(bc.cards.drawPile.size());
+            const int discardSize = static_cast<int>(bc.cards.discardPile.size());
+            if (bc.player.hasStatus<PS::NO_DRAW>() || amount <= 0 || deckSize + discardSize == 0 || bc.cards.cardsInHand == CardManager::MAX_HAND_SIZE) {
+                scrapeFollowUp(bc, drawn, drawnCount);
+                return;
+            }
+            const int toDraw = std::min(amount, CardManager::MAX_HAND_SIZE - bc.cards.cardsInHand);
+            if (deckSize < toDraw) {
+                bc.onShuffle();
+                if (deckSize > 0) {
+                    drawAndRemember(bc, deckSize, drawn, drawnCount);
+                }
+                bc.addToTop( scrapeDraw(toDraw - deckSize, drawn, drawnCount) );
+                bc.addToTop( Actions::EmptyDeckShuffle() );
+                return;
+            }
+            drawAndRemember(bc, toDraw, drawn, drawnCount);
+            scrapeFollowUp(bc, drawn, drawnCount);
+        }};
+    }
+}
+
+Action Actions::ScrapeAction(int amount) {
+    return scrapeDraw(amount, DrawnCards {}, 0);
+}
+
+Action Actions::SeekAction(int count) {
+    return {[=] (BattleContext &bc) {
+        auto &pile = bc.cards.drawPile;
+        if (pile.empty() || count <= 0) {
+            return;
+        }
+        if (static_cast<int>(pile.size()) <= count) {
+            while (!pile.empty()) { // BetterDrawPileToHandAction goes through the group from its start, the bottom of the pile
+                const CardInstance c = pile[0];
+                bc.cards.removeFromDrawPileAtIdx(0);
+                bc.moveToHandHelper(c);
+            }
+            return;
+        }
+        if (count > 1) {
+            bc.addToTop( Actions::SeekAction(count-1) ); // the same grid in the game
+        }
+        bc.openSimpleCardSelectScreen(CardSelectTask::SEEK, 1);
+    }};
+}
+
+Action Actions::SunderAction(int targetIdx, int damage, int energy) {
+    return {[=] (BattleContext &bc) {
+        auto &m = bc.monsters.arr[targetIdx];
+        if (!m.isDeadOrEscaped()) {
+            m.attacked(bc, damage);
+        }
+        // No check for half dead or minions, unlike Feed.
+        if (m.isDying()) {
+            bc.addToBot( Actions::GainEnergy(energy) );
+        }
+        bc.checkCombat();
+    }};
+}
+
+Action Actions::TempestAction(int energy, bool upgraded, bool useEnergy) {
+    return {[=] (BattleContext &bc) {
+        const int effect = energy + (bc.player.hasRelic<R::CHEMICAL_X>() ? 2 : 0) + (upgraded ? 1 : 0);
+        if (effect > 0) {
+            bc.addToBot( Actions::ChannelOrbs(Orb::LIGHTNING, effect) );
+            if (useEnergy) {
+                bc.player.useEnergy(bc.player.energy);
+            }
+        }
     }};
 }
 
@@ -941,11 +1402,18 @@ Action Actions::UpgradeAllCardsInHand() {
 }
 
 Action Actions::EssenceOfDarkness(int darkOrbsPerSlot) {
-    return sts::Action();
+    return {[=] (BattleContext &bc) {
+        const int total = bc.player.orbSlots * darkOrbsPerSlot;
+        for (int i = 0; i < total; ++i) {
+            bc.player.channelOrb(bc, Orb::DARK);
+        }
+    }};
 }
 
 Action Actions::IncreaseOrbSlots(int count) {
-    return sts::Action();
+    return {[=] (BattleContext &bc) {
+        bc.player.increaseOrbSlots(count);
+    }};
 }
 
 Action Actions::SuicideAction(int monsterIdx, bool triggerRelics) {

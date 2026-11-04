@@ -11,6 +11,9 @@ using namespace sts;
 CardInstance::CardInstance(CardId id, bool upgraded) : id(id), upgraded(upgraded) {
     cost = getEnergyCost(id, upgraded);
     costForTurn = cost;
+    if (id == CardId::GENETIC_ALGORITHM) {
+        specialData = 1; // its misc, which starts at 1
+    }
 }
 
 CardInstance::CardInstance(const Card &card) : CardInstance(card.getId(), card.isUpgraded()) {
@@ -18,6 +21,11 @@ CardInstance::CardInstance(const Card &card) : CardInstance(card.getId(), card.i
         specialData = card.getUpgraded();
     } else {
         specialData = card.misc;
+    }
+    if (id == CardId::FORCE_FIELD && card.misc > 0) {
+        // misc holds the discount it was made with, see Deck::obtain
+        updateCost(-card.misc);
+        specialData = 0;
     }
 }
 
@@ -90,8 +98,10 @@ bool CardInstance::usesSpecialData() const {
     switch (getId()) {
         case CardId::SEARING_BLOW:
         case CardId::RAMPAGE:
+        case CardId::CLAW:
         case CardId::GENETIC_ALGORITHM:
         case CardId::RITUAL_DAGGER:
+        case CardId::STEAM_BARRIER:
             return true;
 
         default:
@@ -114,6 +124,16 @@ void CardInstance::updateCost(int amount) {
     if (tmpCost != cost) {
         cost = static_cast<int8_t>(tmpCost);
         costForTurn = static_cast<int8_t>(std::max(0, static_cast<int>(cost)-diff));
+    }
+}
+
+void CardInstance::modifyCostForCombat(int amount) {
+    if (costForTurn > 0) {
+        costForTurn = static_cast<int8_t>(std::max(0, costForTurn + amount));
+        cost = costForTurn;
+    } else if (cost >= 0) {
+        cost = static_cast<int8_t>(std::max(0, cost + amount));
+        costForTurn = 0;
     }
 }
 

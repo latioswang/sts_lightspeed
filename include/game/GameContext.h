@@ -231,6 +231,11 @@ namespace sts {
         RelicContainer relics;
         Deck deck;
 
+        // AbstractPlayer.masterMaxOrbs: the orb slots each fight starts with. Prismatic Shard gives one to a class with none.
+        std::int8_t masterMaxOrbs = 0;
+        // ForceField's constructor counts the Power cards in cardsPlayedThisCombat, which is only cleared when the next fight starts.
+        std::int8_t powersPlayedLastCombat = 0;
+
         bool blueKey = false;
         bool greenKey = false;
         bool redKey = false;

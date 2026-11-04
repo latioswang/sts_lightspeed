@@ -107,16 +107,164 @@ void Player::gainEnergy(int amount) {
     energy += amount;
 }
 
+// IncreaseMaxOrbAction calls increaseMaxOrbSlots once per slot, and that does nothing at exactly 10.
 void Player::increaseOrbSlots(int amount) {
-    // todo
+    for (int i = 0; i < amount && orbSlots != MAX_ORB_SLOTS; ++i) {
+        ++orbSlots;
+    }
 }
 
-void Player::channelOrb(Orb orb) {
-    // todo
+// decreaseMaxOrbSlots removes the last slot, whatever it holds.
+void Player::decreaseOrbSlots(int amount) {
+    for (int i = 0; i < amount && orbSlots > 0; ++i) {
+        --orbSlots;
+        orbs[orbSlots] = Orb::EMPTY;
+        darkOrbEvoke[orbSlots] = 0;
+    }
+}
+
+void Player::channelOrb(BattleContext &bc, Orb orb, int darkEvoke) {
+    if (orbSlots <= 0) {
+        return;
+    }
+
+    for (int i = 0; i < orbSlots; ++i) {
+        if (orbs[i] == Orb::EMPTY) {
+            orbs[i] = orb;
+            darkOrbEvoke[i] = static_cast<std::int16_t>(darkEvoke);
+            if (orb == Orb::LIGHTNING) {
+                ++lightningChanneled;
+            } else if (orb == Orb::FROST) {
+                ++frostChanneled;
+            }
+            return;
+        }
+    }
+
+    // Full: AbstractPlayer.channelOrb queues the evoke and then the same channel on top.
+    bc.addToTop( Actions::ChannelOrb(orb, darkEvoke) );
+    bc.addToTop( Actions::EvokeOrb() );
+}
+
+void Player::evokeOrb(BattleContext &bc) {
+    if (!hasOrb()) {
+        return;
+    }
+    evokeWithoutLosingOrb(bc);
+    removeNextOrb();
+}
+
+void Player::evokeWithoutLosingOrb(BattleContext &bc) {
+    if (!hasOrb()) {
+        return;
+    }
+
+    const int amount = orbEvokeAmount(0);
+    switch (orbs[0]) {
+        case Orb::LIGHTNING:
+            bc.addToTop( Actions::LightningOrbDamage(amount, hasStatus<PS::ELECTRO>()) );
+            break;
+
+        case Orb::FROST:
+            bc.addToTop( Actions::GainBlock(amount) );
+            break;
+
+        case Orb::DARK: {
+            // DarkOrbEvokeAction's constructor takes the first monster with the lowest HP.
+            int target = -1;
+            for (int i = 0; i < bc.monsters.monsterCount; ++i) {
+                const auto &m = bc.monsters.arr[i];
+                if (!m.isDeadOrEscaped() && (target == -1 || m.curHp < bc.monsters.arr[target].curHp)) {
+                    target = i;
+                }
+            }
+            if (target != -1) {
+                bc.addToTop( Actions::DarkOrbDamage(target, amount) );
+            }
+            break;
+        }
+
+        case Orb::PLASMA:
+            bc.addToTop( Actions::GainEnergy(amount) );
+            break;
+
+        default:
+            break;
+    }
+}
+
+void Player::removeNextOrb() {
+    if (!hasOrb()) {
+        return;
+    }
+    for (int i = 1; i < orbSlots; ++i) {
+        orbs[i-1] = orbs[i];
+        darkOrbEvoke[i-1] = darkOrbEvoke[i];
+    }
+    orbs[orbSlots-1] = Orb::EMPTY;
+    darkOrbEvoke[orbSlots-1] = 0;
+}
+
+void Player::orbOnStartOfTurn(BattleContext &bc, int slot) {
+    if (orbs[slot] == Orb::PLASMA) {
+        bc.addToBot( Actions::GainEnergy(orbPassiveAmount(slot)) );
+    }
+}
+
+void Player::orbOnEndOfTurn(BattleContext &bc, int slot) {
+    switch (orbs[slot]) {
+        case Orb::LIGHTNING:
+            bc.addToBot( Actions::LightningOrbDamage(orbPassiveAmount(slot), hasStatus<PS::ELECTRO>()) );
+            break;
+
+        case Orb::FROST:
+            bc.addToBot( Actions::GainBlock(orbPassiveAmount(slot)) );
+            break;
+
+        case Orb::DARK:
+            darkOrbEvoke[slot] = static_cast<std::int16_t>(darkOrbEvoke[slot] + orbPassiveAmount(slot));
+            break;
+
+        default:
+            break;
+    }
 }
 
 bool Player::hasEmptyOrb() const {
-    return false;
+    return orbSlots > 0 && orbs[orbSlots-1] == Orb::EMPTY;
+}
+
+bool Player::hasOrb() const {
+    return orbSlots > 0 && orbs[0] != Orb::EMPTY;
+}
+
+int Player::filledOrbCount() const {
+    int count = 0;
+    while (count < orbSlots && orbs[count] != Orb::EMPTY) {
+        ++count;
+    }
+    return count;
+}
+
+// AbstractOrb.applyFocus and Dark's override. Focus changes reach every orb at once, so these can be worked out when read.
+int Player::orbPassiveAmount(int slot) const {
+    switch (orbs[slot]) {
+        case Orb::LIGHTNING: return std::max(0, 3 + focus);
+        case Orb::FROST: return std::max(0, 2 + focus);
+        case Orb::DARK: return std::max(0, 6 + focus);
+        case Orb::PLASMA: return 1;
+        default: return 0;
+    }
+}
+
+int Player::orbEvokeAmount(int slot) const {
+    switch (orbs[slot]) {
+        case Orb::LIGHTNING: return std::max(0, 8 + focus);
+        case Orb::FROST: return std::max(0, 5 + focus);
+        case Orb::DARK: return darkOrbEvoke[slot];
+        case Orb::PLASMA: return 2;
+        default: return 0;
+    }
 }
 
 void Player::removeDebuffs() {
@@ -125,6 +273,9 @@ void Player::removeDebuffs() {
     }
     if (getStatus<PS::DEXTERITY>() < 0) {
         setStatusValueNoChecks<PS::DEXTERITY>(0);
+    }
+    if (focus < 0) {
+        focus = 0;
     }
 
     removeStatus<PS::BIAS>();
@@ -230,6 +381,13 @@ void Player::attacked(BattleContext &bc, int enemyIdx, int calculatedDamage) {
 
     if (hasStatus<PS::FLAME_BARRIER>()) {
         bc.addToTop( Actions::DamageEnemy(enemyIdx, getStatus<PS::FLAME_BARRIER>()) );
+    }
+
+    // StaticDischargePower.onAttacked sees the damage after block and Buffer, before Torii and Tungsten Rod.
+    if (damage > 0 && hasStatus<PS::STATIC_DISCHARGE>()) {
+        for (int i = 0; i < getStatus<PS::STATIC_DISCHARGE>(); ++i) {
+            bc.addToTop( Actions::ChannelOrb(Orb::LIGHTNING) );
+        }
     }
 
     if (damage > 0 && damage <=5 && hasRelic<RelicId::TORII>()) {
@@ -388,6 +546,10 @@ void Player::applyEndOfTurnPowers(BattleContext &bc) {
 
             case PS::CONSTRICTED:
                 bc.addToBot(Actions::DamagePlayer(pair.second));
+                break;
+
+            case PS::AMPLIFY:
+                bc.addToBot(Actions::RemoveStatus<PS::AMPLIFY>());
                 break;
 
             case PS::DOUBLE_TAP:
@@ -589,12 +751,14 @@ void Player::applyStartOfTurnPowers(BattleContext &bc) {
                 bc.addToBot(Actions::MakeTempCardInHand(CardId::SMITE, hasStatus<PS::MASTER_REALITY>(), pair.second) );
                 break;
 
-            case PS::BIAS:
-                bc.addToBot( Actions::DecrementStatus<PS::FOCUS>(pair.second) );
+            case PS::BIAS: // an ApplyPowerAction with a negative FocusPower, so Artifact stops it
+                bc.addToBot( Actions::DebuffPlayer<PS::FOCUS>(-pair.second, false) );
                 break;
 
-            case PS::CREATIVE_AI:
-//                bc.addToBot( Actions::SetState(InputState::CREATE_RANDOM_CARD_IN_HAND_POWER, pair.second) ); // todo
+            case PS::CREATIVE_AI: // The game's combat pools stay the class's own, with or without Prismatic Shard.
+                for (int i = 0; i < pair.second; ++i) {
+                    bc.addToBot( Actions::MakeTempCardInHand(getTrulyRandomCardInCombat(bc.cardRandomRng, cc, CardType::POWER)) );
+                }
                 break;
 
             case PS::ECHO_FORM:
@@ -621,8 +785,12 @@ void Player::applyStartOfTurnPowers(BattleContext &bc) {
                 removeStatus<PS::FLAME_BARRIER>();
                 break;
 
-            case PS::HELLO_WORLD: // todo
-                removeStatus<PS::HELLO_WORLD>();
+            case PS::HELLO_WORLD:
+                if (!bc.monsters.areMonstersBasicallyDead()) {
+                    for (int i = 0; i < pair.second; ++i) {
+                        bc.addToBot( Actions::MakeTempCardInHand(getRandomClassCardOfRarity(bc.cardRandomRng, cc, CardRarity::COMMON)) );
+                    }
+                }
                 break;
 
             case PS::INFINITE_BLADES:
@@ -630,7 +798,12 @@ void Player::applyStartOfTurnPowers(BattleContext &bc) {
                 break;
 
             case PS::LOOP:
-                // todo do amount times : call orb[0].onStartOfTurn, orb[0].onEndOfTurn
+                if (orbSlots > 0) {
+                    for (int i = 0; i < pair.second; ++i) {
+                        orbOnStartOfTurn(bc, 0);
+                        orbOnEndOfTurn(bc, 0);
+                    }
+                }
                 break;
 
             case PS::MAGNETISM:
@@ -751,6 +924,11 @@ void Player::rechargeEnergy(BattleContext &bc) {
     if (hasStatus<PS::ENERGIZED>()) {
         gainEnergy(getStatus<PS::ENERGIZED>());
         removeStatus<PS::ENERGIZED>();
+    }
+
+    if (hasStatus<PS::ENERGIZED_BLUE>()) {
+        gainEnergy(getStatus<PS::ENERGIZED_BLUE>());
+        removeStatus<PS::ENERGIZED_BLUE>();
     }
 }
 
@@ -890,6 +1068,15 @@ namespace sts {
         os << "\t" << "hp:(" << p.curHp << "/" << p.maxHp << ")"
             << " energy:(" << p.energy << "/" << static_cast<int>(p.energyPerTurn)
         << ") block:(" << p.block << ")\n";
+
+        if (p.orbSlots > 0) {
+            static constexpr const char* const orbNames[] {"-", "Dark", "Frost", "Plasma", "Lightning"};
+            os << "\t" << "orbs: {";
+            for (int i = 0; i < p.orbSlots; ++i) {
+                os << orbNames[static_cast<int>(p.orbs[i])] << "(" << p.orbPassiveAmount(i) << "," << p.orbEvokeAmount(i) << ") ";
+            }
+            os << "}\n";
+        }
 
         printStatusEffects(os, p);
         printRelics(os, p);

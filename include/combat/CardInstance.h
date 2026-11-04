@@ -59,7 +59,7 @@ namespace sts {
         // *****  *****
         void upgradeBaseCost(int newBaseCost); // Blood for Blood when upgraded
         void updateCost(int amount);
-//        void modifyCostForCombat(int amount);
+        void modifyCostForCombat(int amount);
 
         void setCostForCombat(int cost);
         void setCostForTurn(int newCost);

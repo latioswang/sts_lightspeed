@@ -17,6 +17,7 @@
 #include <cstdint>
 #include <bitset>
 #include <map>
+#include <array>
 
 #include <constants/CharacterClasses.h>
 #include <constants/Relics.h>
@@ -41,7 +42,15 @@ namespace sts {
         int8_t cardDrawPerTurn = 5; // AbstractPlayer gameHandSize
 
         Stance stance = Stance::NEUTRAL;
+        // AbstractPlayer.maxOrbs. Capacitor stops at 10 because it adds one slot at a time.
+        static constexpr int MAX_ORB_SLOTS = 10;
         int8_t orbSlots = 0;
+        std::array<Orb, MAX_ORB_SLOTS> orbs {}; // index 0 is the next to evoke, and filled slots are always first
+        std::array<std::int16_t, MAX_ORB_SLOTS> darkOrbEvoke {}; // only Dark's evoke amount builds up; the rest follow Focus
+        std::int16_t lightningChanneled = 0; // orbsChanneledThisCombat, for Thunder Strike
+        std::int16_t frostChanneled = 0; // and Blizzard
+        std::int8_t powersPlayedThisCombat = 0; // Force Field
+        bool reboundJustApplied = false; // ReboundPower.justEvoked: the Rebound that applied it isn't sent back
 
         // for spire spear/shield
         std::int8_t lastTargetedMonster = 1;
@@ -133,8 +142,18 @@ namespace sts {
         void useEnergy(int amount);
         void gainEnergy(int amount);
         void increaseOrbSlots(int amount);
-        void channelOrb(Orb orb);
+        void decreaseOrbSlots(int amount);
+        void channelOrb(BattleContext &bc, Orb orb, int darkEvoke=6); // darkEvoke: Recursion keeps a Dark orb's build-up
+        void evokeOrb(BattleContext &bc); // evokes the next orb and removes it
+        void evokeWithoutLosingOrb(BattleContext &bc);
+        void removeNextOrb();
+        void orbOnStartOfTurn(BattleContext &bc, int slot);
+        void orbOnEndOfTurn(BattleContext &bc, int slot);
         [[nodiscard]] bool hasEmptyOrb() const;
+        [[nodiscard]] bool hasOrb() const;
+        [[nodiscard]] int filledOrbCount() const;
+        [[nodiscard]] int orbPassiveAmount(int slot) const;
+        [[nodiscard]] int orbEvokeAmount(int slot) const;
 
         void applyEndOfTurnPowers(BattleContext &bc);
         void applyAtEndOfRoundPowers();
@@ -220,6 +239,8 @@ namespace sts {
                 return artifact;
             case PS::DEXTERITY:
                 return dexterity;
+            case PS::FOCUS:
+                return focus;
             case PS::STRENGTH:
                 return strength;
             default:
@@ -354,6 +375,14 @@ namespace sts {
 
         if (s == PS::PANACHE && !hasStatus<s>()) {
             panacheCounter = 5;
+        }
+
+        if (s == PS::REBOUND && !hasStatus<s>()) {
+            reboundJustApplied = true;
+        }
+
+        if (s == PS::MACHINE_LEARNING) { // DrawPower raises gameHandSize
+            cardDrawPerTurn += static_cast<std::int8_t>(amount);
         }
 
         if (hasStatus<s>()) {
