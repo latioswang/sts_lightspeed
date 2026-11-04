@@ -57,7 +57,7 @@ namespace sts {
         std::int16_t mark = 0;
         std::int16_t metallicize = 0;
         std::int16_t platedArmor = 0;
-        std::int16_t poison = 0;
+        int poison = 0; // Catalyst can go well past what 16 bits hold
         std::int16_t regen = 0;
         std::int16_t shackled = 0;
         int strength = 0;
@@ -138,6 +138,7 @@ namespace sts {
         void attacked(BattleContext &bc, int damage);
         void damageUnblockedHelper(BattleContext &bc, int damage);
         void damage(BattleContext &bc, int damage);
+        void loseHp(BattleContext &bc, int amount); // DamageInfo with type HP_LOSS: poison and Choke
         void onHpLost(BattleContext &bc, int amount);
         void removeDebuffs();
 

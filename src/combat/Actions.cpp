@@ -723,11 +723,7 @@ namespace {
                     continue;
                 }
                 if (c.costForTurn != 0 && !c.freeToPlayOnce) {
-                    bc.cards.removeFromHandAtIdx(i);
-                    bc.cards.moveToDiscardPile(c);
-                    bc.cards.onCardDrawOrDiscard(bc);
-                    bc.onManualDiscard(c);
-                    ++bc.player.cardsDiscardedThisTurn;
+                    bc.discardFromHand(i);
                 }
                 break;
             }
@@ -814,6 +810,290 @@ Action Actions::TempestAction(int energy, bool upgraded, bool useEnergy) {
             bc.addToBot( Actions::ChannelOrbs(Orb::LIGHTNING, effect) );
             if (useEnergy) {
                 bc.player.useEnergy(bc.player.energy);
+            }
+        }
+    }};
+}
+
+Action Actions::AttackEnemyTimes(int idx, int damage, int count) {
+    return {[=] (BattleContext &bc) {
+        if (count > 1) {
+            bc.addToTop( Actions::AttackEnemyTimes(idx, damage, count-1) );
+        }
+        if (count > 0 && !bc.monsters.arr[idx].isDeadOrEscaped()) {
+            bc.monsters.arr[idx].attacked(bc, damage);
+            bc.checkCombat();
+        }
+    }};
+}
+
+Action Actions::MonsterLoseHp(int idx, int amount) {
+    return {[=] (BattleContext &bc) {
+        bc.monsters.arr[idx].loseHp(bc, amount);
+        bc.checkCombat();
+    }};
+}
+
+Action Actions::DiscardAction(int amount, bool isRandom, int flyingFrom) {
+    return {[=] (BattleContext &bc) {
+        if (bc.monsters.areMonstersBasicallyDead()) {
+            return;
+        }
+        const int firstFlying = flyingFrom < 0 ? static_cast<int>(bc.cards.discardPile.size()) : flyingFrom;
+        if (bc.cards.cardsInHand <= amount) { // no screen and no roll: it goes from the top of the hand
+            while (bc.cards.cardsInHand > 0) {
+                bc.discardFromHand(bc.cards.cardsInHand-1, firstFlying);
+            }
+            return;
+        }
+        if (isRandom) {
+            for (int i = 0; i < amount; ++i) {
+                bc.discardFromHand(bc.cardRandomRng.random(bc.cards.cardsInHand-1), firstFlying);
+            }
+            return;
+        }
+        bc.openSimpleCardSelectScreen(CardSelectTask::DISCARD, amount);
+        bc.cardSelectInfo.discard_FlyingFrom() = firstFlying;
+    }};
+}
+
+Action Actions::DiscardSpecificCard(std::int16_t uniqueId) {
+    return {[=] (BattleContext &bc) {
+        for (int i = 0; i < bc.cards.cardsInHand; ++i) {
+            if (bc.cards.hand[i].getUniqueId() == uniqueId) {
+                bc.discardFromHand(i);
+                return;
+            }
+        }
+    }};
+}
+
+Action Actions::BaneAction(int idx, int damage) {
+    return {[=] (BattleContext &bc) {
+        auto &m = bc.monsters.arr[idx];
+        if (m.hasStatus<MS::POISON>() && !m.isDeadOrEscaped()) {
+            m.attacked(bc, damage);
+            bc.checkCombat();
+        }
+    }};
+}
+
+// Each bounce rolls the next target before its own poison lands, and the poison goes on top of the next bounce.
+Action Actions::BouncingFlaskAction(int idx, int poison, int times) {
+    return {[=] (BattleContext &bc) {
+        if (idx < 0 || bc.monsters.areMonstersBasicallyDead()) {
+            return;
+        }
+        if (times > 1) {
+            bc.addToTop( Actions::BouncingFlaskAction(bc.monsters.getRandomMonsterIdx(bc.cardRandomRng, true), poison, times-1) );
+        }
+        if (bc.monsters.arr[idx].curHp > 0) {
+            bc.addToTop( Actions::DebuffEnemy<MS::POISON>(idx, poison) );
+        }
+    }};
+}
+
+Action Actions::BulletTimeAction() {
+    return {[] (BattleContext &bc) {
+        for (int i = 0; i < bc.cards.cardsInHand; ++i) {
+            bc.cards.hand[i].setCostForTurn(0);
+        }
+    }};
+}
+
+Action Actions::CalculatedGambleAction() {
+    return {[] (BattleContext &bc) {
+        const int count = bc.cards.cardsInHand;
+        if (count > 0) { // the card always passes false for the action's upgraded flag, so it never draws one more
+            bc.addToTop( Actions::DrawCards(count) );
+            bc.addToTop( Actions::DiscardAction(count, true) );
+        }
+    }};
+}
+
+Action Actions::CatalystAction(int idx, int multiplier) {
+    return {[=] (BattleContext &bc) {
+        const auto &m = bc.monsters.arr[idx];
+        if (m.hasStatus<MS::POISON>()) {
+            bc.addToTop( Actions::DebuffEnemy<MS::POISON>(idx, m.getStatus<MS::POISON>() * (multiplier-1)) );
+        }
+    }};
+}
+
+Action Actions::DoppelgangerAction(int energy, bool upgraded, bool useEnergy) {
+    return {[=] (BattleContext &bc) {
+        const int effect = energy + (bc.player.hasRelic<R::CHEMICAL_X>() ? 2 : 0) + (upgraded ? 1 : 0);
+        if (effect > 0) {
+            bc.addToBot( Actions::BuffPlayer<PS::ENERGIZED>(effect) );
+            bc.addToBot( Actions::BuffPlayer<PS::DRAW_CARD_NEXT_TURN>(effect) );
+            if (useEnergy) {
+                bc.player.useEnergy(bc.player.energy);
+            }
+        }
+    }};
+}
+
+// DrawCardAction runs its follow-up when it ends, whether or not it drew, and an empty pile keeps the follow-up for after the shuffle.
+Action Actions::EscapePlanDraw(int block) {
+    return {[=] (BattleContext &bc) {
+        const auto &draw = bc.cards.drawPile;
+        if (bc.player.hasStatus<PS::NO_DRAW>() || draw.size() + bc.cards.discardPile.size() == 0 || bc.cards.cardsInHand == CardManager::MAX_HAND_SIZE) {
+            return;
+        }
+        if (draw.empty()) {
+            bc.onShuffle();
+            bc.addToTop( Actions::EscapePlanDraw(block) );
+            bc.addToTop( Actions::EmptyDeckShuffle() );
+            return;
+        }
+        const bool isSkill = draw.back().getType() == CardType::SKILL;
+        bc.drawCards(1);
+        if (isSkill) {
+            bc.addToTop( Actions::GainBlock(block) );
+        }
+    }};
+}
+
+Action Actions::ExpertiseAction(int handSize) {
+    return {[=] (BattleContext &bc) {
+        const int toDraw = handSize - bc.cards.cardsInHand;
+        if (toDraw > 0) {
+            bc.addToTop( Actions::DrawCards(toDraw) );
+        }
+    }};
+}
+
+// The game counts the Attacks in cardsPlayedThisTurn, which holds Finisher itself, and takes one off.
+Action Actions::FinisherAction(int idx, int damage) {
+    return {[=] (BattleContext &bc) {
+        const int attacks = bc.player.attacksPlayedThisTurn - 1;
+        if (bc.monsters.arr[idx].curHp > 0 && attacks > 0) {
+            bc.addToTop( Actions::AttackEnemyTimes(idx, damage, attacks) );
+        }
+    }};
+}
+
+Action Actions::FlechetteAction(int idx, int damage) {
+    return {[=] (BattleContext &bc) {
+        int skills = 0;
+        for (int i = 0; i < bc.cards.cardsInHand; ++i) {
+            if (bc.cards.hand[i].getType() == CardType::SKILL) {
+                ++skills;
+            }
+        }
+        if (skills > 0) {
+            bc.addToTop( Actions::AttackEnemyTimes(idx, damage, skills) );
+        }
+    }};
+}
+
+Action Actions::GainEnergyIfDiscard(int amount) {
+    return {[=] (BattleContext &bc) {
+        if (bc.player.cardsDiscardedThisTurn > 0) {
+            bc.player.gainEnergy(amount);
+        }
+    }};
+}
+
+// specialData is how much base damage it has lost. baseDamage stops at 0, so an upgrade later still adds to what's left.
+Action Actions::GlassKnifeAction(std::int16_t uniqueId) {
+    return {[=] (BattleContext &bc) {
+        bc.forEachInBattleInstance(uniqueId, [] (CardInstance &c) {
+            const int baseDamage = (c.isUpgraded() ? 12 : 8) - c.specialData;
+            c.specialData = static_cast<std::int16_t>(c.specialData + std::min(2, baseDamage));
+        });
+    }};
+}
+
+Action Actions::HeelHookAction(int idx, int damage) {
+    return {[=] (BattleContext &bc) {
+        if (bc.monsters.arr[idx].hasStatus<MS::WEAK>()) {
+            bc.addToTop( Actions::DrawCards(1) );
+            bc.addToTop( Actions::GainEnergy(1) );
+        }
+        bc.addToTop( Actions::AttackEnemy(idx, damage) );
+    }};
+}
+
+Action Actions::MalaiseAction(int idx, int energy, bool upgraded, bool useEnergy) {
+    return {[=] (BattleContext &bc) {
+        const int effect = energy + (bc.player.hasRelic<R::CHEMICAL_X>() ? 2 : 0) + (upgraded ? 1 : 0);
+        if (effect > 0) {
+            bc.addToBot( Actions::DebuffEnemy<MS::STRENGTH>(idx, -effect, false) );
+            bc.addToBot( Actions::DebuffEnemy<MS::WEAK>(idx, effect, false) );
+            if (useEnergy) {
+                bc.player.useEnergy(bc.player.energy);
+            }
+        }
+    }};
+}
+
+Action Actions::NightmareAction() {
+    return {[] (BattleContext &bc) {
+        if (bc.cards.cardsInHand == 1) {
+            bc.player.addNightmare(bc.cards.hand[0]);
+        } else if (bc.cards.cardsInHand > 1) {
+            bc.openSimpleCardSelectScreen(CardSelectTask::NIGHTMARE, 1);
+        }
+    }};
+}
+
+Action Actions::ObtainPotion(Potion potion) {
+    return {[=] (BattleContext &bc) {
+        bc.obtainPotion(potion);
+    }};
+}
+
+// The screen opens however few cards there are, and it can always be closed with fewer than it allows.
+Action Actions::RetainCardsAction(int amount, int alreadySelected) {
+    return {[=] (BattleContext &bc) {
+        if (amount <= 0 || alreadySelected >= bc.cards.cardsInHand) {
+            return;
+        }
+        bc.openSimpleCardSelectScreen(CardSelectTask::RETAIN, amount);
+        bc.cardSelectInfo.retain_SelectedCount() = alreadySelected;
+        bc.cardSelectInfo.canPickZero = true;
+        bc.cardSelectInfo.canPickAnyNumber = true;
+    }};
+}
+
+Action Actions::SetupAction() {
+    return {[] (BattleContext &bc) {
+        if (bc.cards.cardsInHand == 1) {
+            bc.chooseSetupCard(0);
+        } else if (bc.cards.cardsInHand > 1) {
+            bc.openSimpleCardSelectScreen(CardSelectTask::SETUP, 1);
+        }
+    }};
+}
+
+// The action runs ahead of UseCardAction and queues its hits behind it.
+Action Actions::SkewerAction(int idx, int damage, int energy, bool useEnergy) {
+    return {[=] (BattleContext &bc) {
+        const int effect = energy + (bc.player.hasRelic<R::CHEMICAL_X>() ? 2 : 0);
+        if (effect > 0) {
+            bc.addToBot( Actions::AttackEnemyTimes(idx, damage, effect) );
+            if (useEnergy) {
+                bc.player.useEnergy(bc.player.energy);
+            }
+        }
+    }};
+}
+
+Action Actions::StormOfSteelAction(bool upgraded) {
+    return {[=] (BattleContext &bc) {
+        const int count = bc.cards.cardsInHand;
+        bc.addToTop( Actions::MakeTempCardInHand(CardId::SHIV, upgraded, count) );
+        bc.addToTop( Actions::DiscardAction(count) );
+    }};
+}
+
+Action Actions::UnloadAction() {
+    return {[] (BattleContext &bc) {
+        for (int i = 0; i < bc.cards.cardsInHand; ++i) {
+            const auto &c = bc.cards.hand[i];
+            if (c.getType() != CardType::ATTACK) {
+                bc.addToTop( Actions::DiscardSpecificCard(c.getUniqueId()) );
             }
         }
     }};
@@ -1429,8 +1709,18 @@ Action Actions::SuicideAction(int monsterIdx, bool triggerRelics) {
     }};
 }
 
-Action Actions::PoisonLoseHpAction() {
-    return sts::Action();
+// The amount is taken when it's queued, and a monster at 0 HP still loses its point of poison.
+Action Actions::PoisonLoseHpAction(int idx, int amount) {
+    return {[=] (BattleContext &bc) {
+        auto &m = bc.monsters.arr[idx];
+        if (m.curHp > 0) {
+            m.loseHp(bc, amount);
+        }
+        if (m.hasStatus<MS::POISON>()) {
+            m.decrementStatus<MS::POISON>();
+        }
+        bc.checkCombat();
+    }};
 }
 
 Action Actions::RemovePlayerDebuffs() {

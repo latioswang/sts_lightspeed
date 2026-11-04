@@ -403,6 +403,13 @@ void CardManager::draw(BattleContext &bc, int amount) {
     for (int i = 0; i < amount; i++) {
         auto c = popFromDrawPile();
 
+        // triggerWhenDrawn comes before the hand and before Confusion's onCardDraw.
+        if (c.getId() == CardId::EVISCERATE) {
+            c.setCostForTurn(c.cost - bc.player.cardsDiscardedThisTurn);
+        } else if (c.getId() == CardId::ENDLESS_AGONY) {
+            bc.addToTop( Actions::MakeTempCardInHand(c) );
+        }
+
         if (bc.player.hasStatus<PS::CONFUSED>()) {
             if (c.cost >= 0) {  // todo status and curses affected by this?
                 const auto newCost = static_cast<std::int8_t>(bc.cardRandomRng.random(3));

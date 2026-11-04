@@ -100,6 +100,7 @@ bool CardInstance::usesSpecialData() const {
         case CardId::RAMPAGE:
         case CardId::CLAW:
         case CardId::GENETIC_ALGORITHM:
+        case CardId::GLASS_KNIFE:
         case CardId::RITUAL_DAGGER:
         case CardId::STEAM_BARRIER:
             return true;
@@ -322,10 +323,16 @@ bool CardInstance::canUse(const BattleContext &bc, int target, const bool inAuto
             if (getId() == CardId::CLASH && !canUseClash(bc)) {
                 return false;
             }
+            if (getId() == CardId::GRAND_FINALE && !bc.cards.drawPile.empty()) {
+                return false;
+            }
             break;
 
         case CardType::SKILL:
-            if (id == CardId::SECRET_TECHNIQUE) {
+            if (id == CardId::REFLEX || id == CardId::TACTICIAN) {
+                return false;
+
+            } else if (id == CardId::SECRET_TECHNIQUE) {
                 const bool haveSkill = std::find_if(
                         bc.cards.drawPile.begin(),
                         bc.cards.drawPile.end(),

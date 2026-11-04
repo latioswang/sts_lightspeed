@@ -345,8 +345,18 @@ void search::BattleScumSearcher2::enumerateCardSelectActions(search::BattleScumS
 
         case CardSelectTask::EXHAUST_ONE:
         case CardSelectTask::RECYCLE:
+        case CardSelectTask::DISCARD:
+        case CardSelectTask::NIGHTMARE:
+        case CardSelectTask::SETUP:
             setupCardOptionsHelper(node, bc.cards.hand.begin(), bc.cards.hand.begin() + bc.cards.cardsInHand);
             break;
+
+        case CardSelectTask::RETAIN: { // picked cards are at the end of the hand, and the screen can close at any point
+            const int selected = bc.cardSelectInfo.data0;
+            setupCardOptionsHelper(node, bc.cards.hand.begin(), bc.cards.hand.begin() + bc.cards.cardsInHand - selected);
+            node.edges.push_back({search::Action(search::ActionType::SINGLE_CARD_SELECT, CardSelectInfo::RETAIN_DONE_IDX)});
+            break;
+        }
 
         case CardSelectTask::FORETHOUGHT:
         case CardSelectTask::WARCRY:

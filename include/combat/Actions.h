@@ -148,6 +148,34 @@ namespace sts {
         static Action SunderAction(int targetIdx, int damage, int energy);
         static Action TempestAction(int energy, bool upgraded, bool useEnergy);
 
+        // ************ Silent cards ************
+
+        static Action AttackEnemyTimes(int idx, int damage, int count); // that many DamageActions, without filling the queue
+        static Action MonsterLoseHp(int idx, int amount); // LoseHPAction: Choke
+        static Action DiscardAction(int amount, bool isRandom=false, int flyingFrom=-1); // DiscardAction, hand select and all
+        static Action DiscardSpecificCard(std::int16_t uniqueId); // DiscardSpecificCardAction
+        static Action BaneAction(int idx, int damage);
+        static Action BouncingFlaskAction(int idx, int poison, int times);
+        static Action BulletTimeAction(); // ApplyBulletTimeAction
+        static Action CalculatedGambleAction();
+        static Action CatalystAction(int idx, int multiplier); // DoublePoisonAction and TriplePoisonAction
+        static Action DoppelgangerAction(int energy, bool upgraded, bool useEnergy);
+        static Action EscapePlanDraw(int block); // DrawCardAction(1, EscapePlanAction)
+        static Action ExpertiseAction(int handSize);
+        static Action FinisherAction(int idx, int damage); // DamagePerAttackPlayedAction
+        static Action FlechetteAction(int idx, int damage);
+        static Action GainEnergyIfDiscard(int amount);
+        static Action GlassKnifeAction(std::int16_t uniqueId); // ModifyDamageAction
+        static Action HeelHookAction(int idx, int damage);
+        static Action MalaiseAction(int idx, int energy, bool upgraded, bool useEnergy);
+        static Action NightmareAction();
+        static Action ObtainPotion(Potion potion); // ObtainPotionAction
+        static Action RetainCardsAction(int amount, int alreadySelected=0);
+        static Action SetupAction();
+        static Action SkewerAction(int idx, int damage, int energy, bool useEnergy);
+        static Action StormOfSteelAction(bool upgraded); // BladeFuryAction
+        static Action UnloadAction();
+
         static Action ExhaustTopCardInHand();
         static Action ExhaustSpecificCardInHand(int idx, std::int16_t uniqueId);
 
@@ -198,7 +226,7 @@ namespace sts {
 
         static Action SuicideAction(int monsterIdx, bool triggerRelics);
 
-        static Action PoisonLoseHpAction();
+        static Action PoisonLoseHpAction(int idx, int amount);
         static Action RemovePlayerDebuffs(); // Orange Pellets Relic
 
         static Action DualityAction(); // Duality Relic

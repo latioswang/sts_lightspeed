@@ -19,6 +19,7 @@
 #include <map>
 #include <array>
 
+#include <combat/CardInstance.h>
 #include <constants/CharacterClasses.h>
 #include <constants/Relics.h>
 #include <constants/PlayerStatusEffects.h>
@@ -51,6 +52,11 @@ namespace sts {
         std::int16_t frostChanneled = 0; // and Blizzard
         std::int8_t powersPlayedThisCombat = 0; // Force Field
         bool reboundJustApplied = false; // ReboundPower.justEvoked: the Rebound that applied it isn't sent back
+
+        // NightmarePower holds a copy of its card, and ApplyPowerAction never stacks it, so each one stays separate.
+        static constexpr int MAX_NIGHTMARES = 8;
+        static constexpr int NIGHTMARE_COPIES = 3;
+        std::int8_t nightmareCount = 0;
 
         // for spire spear/shield
         std::int8_t lastTargetedMonster = 1;
@@ -100,6 +106,8 @@ namespace sts {
         std::int16_t bomb1 = 0;
         std::int16_t bomb2 = 0;
         std::int16_t bomb3 = 0;
+
+        std::array<CardInstance, MAX_NIGHTMARES> nightmareCards {};
 
         template <RelicId r> void setHasRelic(bool value);
         template <PlayerStatus> void setHasStatus(bool value);
@@ -154,6 +162,8 @@ namespace sts {
         [[nodiscard]] int filledOrbCount() const;
         [[nodiscard]] int orbPassiveAmount(int slot) const;
         [[nodiscard]] int orbEvokeAmount(int slot) const;
+
+        void addNightmare(const CardInstance &c);
 
         void applyEndOfTurnPowers(BattleContext &bc);
         void applyAtEndOfRoundPowers();
@@ -325,7 +335,7 @@ namespace sts {
     void Player::buff(int amount) {
         // corruption effects handled elsewhere
 
-        if (amount == 0) {
+        if (amount == 0 && s != PS::NEXT_TURN_BLOCK) { // Dodge and Roll for 0 block still applies its power
             return;
         }
 
@@ -365,7 +375,7 @@ namespace sts {
             return;
         }
 
-        if (s == PS::DOUBLE_DAMAGE || s == PS::INTANGIBLE) { // todo this is definitely wrong
+        if (s == PS::INTANGIBLE) { // todo this is definitely wrong
             setJustApplied<s>(true);
         }
 
@@ -396,6 +406,10 @@ namespace sts {
     template <const PlayerStatus s>
     void Player::debuff(int amount, bool isSourceMonster) {
         if (amount == 0) {
+            return;
+        }
+
+        if (s == PS::NO_DRAW && hasStatus<s>()) { // ApplyPowerAction stops here, before Artifact sees it
             return;
         }
 

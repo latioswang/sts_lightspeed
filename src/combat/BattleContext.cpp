@@ -823,9 +823,17 @@ void BattleContext::executeActions() {
                     player.hasOrb() ||
                     player.hasStatus<PS::HELLO_WORLD>() ||
                     player.hasStatus<PS::CREATIVE_AI>() ||
+                    player.hasStatus<PS::INFINITE_BLADES>() ||
+                    player.hasStatus<PS::NOXIOUS_FUMES>() ||
+                    player.nightmareCount > 0 ||
                     player.bomb1 ||
                     player.bomb2 ||
                     player.bomb3;
+
+            // Poison still ticks with no cards left.
+            for (int i = 0; i < monsters.monsterCount && !hasDamageWithoutCards; ++i) {
+                hasDamageWithoutCards = monsters.arr[i].hasStatus<MS::POISON>();
+            }
 
             if (!hasDamageWithoutCards && monsters.arr[0].id != MonsterId::TRANSIENT) {
                 outcome = Outcome::PLAYER_LOSS;
@@ -970,6 +978,14 @@ void BattleContext::useCard() {
         default:
             // unreachable
             break;
+    }
+
+    // ChokePower.onUseCard comes last in UseCardAction's constructor, with the other monster powers.
+    for (int i = 0; i < monsters.monsterCount; ++i) {
+        const auto &m = monsters.arr[i];
+        if (m.hasStatus<MS::CHOKED>() && !m.isDeadOrEscaped()) {
+            addToBot( Actions::MonsterLoseHp(i, m.getStatus<MS::CHOKED>()) );
+        }
     }
 
     addToBot(Actions::OnAfterCardUsed());
@@ -1978,7 +1994,7 @@ void BattleContext::usePowerCard() {
 
         case CardId::WRAITH_FORM:
             addToBot( Actions::BuffPlayer<PS::INTANGIBLE>(up ? 3 : 2) );
-            addToBot( Actions::DebuffPlayer<PS::WRAITH_FORM>(1) );
+            addToBot( Actions::DebuffPlayer<PS::WRAITH_FORM>(-1, false) );  // its amount is the Dexterity it takes each turn
             break;
 
         // ************************* Defect, ported from Attemory/sts_lightspeed and checked against the game *************************
@@ -2650,6 +2666,8 @@ void BattleContext::applyEndOfRoundPowers() {
 }
 
 void BattleContext::afterMonsterTurns() {
+    const bool roundEnded = !skipMonsterTurn;
+
     // ********* Enemy powers atEndOfRound *********
     if (!skipMonsterTurn) {
         applyEndOfRoundPowers();
@@ -2679,16 +2697,18 @@ void BattleContext::afterMonsterTurns() {
         player.orbOnStartOfTurn(*this, 0);
     }
 
-    if (player.hasStatus<PS::BARRICADE>()) {
-
-    } else if (player.hasStatus<PS::BLUR>()) {
-        player.decrementStatus<PS::BLUR>();
+    if (player.hasStatus<PS::BARRICADE>() || player.hasStatus<PS::BLUR>()) {
 
     } else if (player.hasRelic<R::CALIPERS>()) {
         player.block = std::max(0, player.block-15);
 
     } else {
         player.block = 0;
+    }
+
+    // BlurPower.atEndOfRound queues its ReducePowerAction, so it's still there for the check above.
+    if (roundEnded && player.hasStatus<PS::BLUR>()) {
+        player.decrementStatus<PS::BLUR>();
     }
 
     if (isBattleOver) {
@@ -3202,7 +3222,7 @@ int BattleContext::calculateCardDamage(const CardInstance &card, int targetIdx, 
         damage += 3;
     }
 
-    if (player.hasRelic<R::WRIST_BLADE>() && card.costForTurn == 0) {
+    if (player.hasRelic<R::WRIST_BLADE>() && (card.costForTurn == 0 || (card.freeToPlayOnce && card.cost != -1))) {
         damage += 4;
     }
 
@@ -3316,6 +3336,43 @@ void BattleContext::onManualDiscard(const CardInstance &c) {
     } else if (c.getId() == CardId::REFLEX) {
         addToBot( Actions::DrawCards(c.isUpgraded() ? 3 : 2) );
     }
+}
+
+void BattleContext::discardFromHand(int handIdx, int flyingFrom) {
+    const int firstFlying = flyingFrom < 0 ? static_cast<int>(cards.discardPile.size()) : flyingFrom;
+    const CardInstance c = cards.hand[handIdx];
+    cards.removeFromHandAtIdx(handIdx);
+    cards.moveToDiscardPile(c);
+    cards.onCardDrawOrDiscard(*this);
+    onManualDiscard(c);
+
+    ++player.cardsDiscardedThisTurn;
+    if (!turnHasEnded) { // AbstractPlayer.updateCardsOnDiscard: only Eviscerate does anything with it
+        auto didDiscard = [] (CardInstance &card) {
+            if (card.getId() == CardId::EVISCERATE) {
+                card.setCostForTurn(card.costForTurn - 1);
+            }
+        };
+        for (int i = 0; i < cards.cardsInHand; ++i) {
+            didDiscard(cards.hand[i]);
+        }
+        for (int i = 0; i < firstFlying; ++i) {
+            didDiscard(cards.discardPile[i]);
+        }
+        for (auto &card : cards.drawPile) {
+            didDiscard(card);
+        }
+    }
+}
+
+DamageMatrix BattleContext::calculateMultiDamage(const CardInstance &card, int baseDamage) const {
+    DamageMatrix matrix {0};
+    for (int i = 0; i < monsters.monsterCount; ++i) {
+        if (!monsters.arr[i].isDeadOrEscaped()) {
+            matrix[i] = static_cast<std::uint16_t>(std::min(static_cast<int>(std::numeric_limits<std::uint16_t>::max()), calculateCardDamage(card, i, baseDamage)));
+        }
+    }
+    return matrix;
 }
 
 void BattleContext::onShuffle() {
@@ -3453,6 +3510,52 @@ void BattleContext::chooseArmamentsCard(int handIdx) {
         cards.hand[i++] = c;
     }
 
+}
+
+// The game takes all the picks and moves them when its screen closes, in the order they were picked. Nothing can read the
+// hand in between, as Reflex's draw is at the bottom of the queue, so one at a time comes to the same thing.
+void BattleContext::chooseDiscardCard(int handIdx) {
+    const int picksLeft = cardSelectInfo.pickCount - 1;
+    const int flyingFrom = cardSelectInfo.discard_FlyingFrom();
+    discardFromHand(handIdx, flyingFrom);
+    if (picksLeft > 0) {
+        addToTop( Actions::DiscardAction(picksLeft, false, flyingFrom) );
+    }
+}
+
+// The screen takes the pick out of the hand, and NightmareAction puts it back on top.
+void BattleContext::chooseNightmareCard(int handIdx) {
+    const CardInstance c = cards.hand[handIdx];
+    player.addNightmare(c);
+    cards.removeFromHandAtIdx(handIdx);
+    cards.moveToHand(c);
+}
+
+// RetainCardsAction adds each pick back on top of the hand, and an Ethereal card comes back without being retained.
+void BattleContext::chooseRetainCard(int handIdx) {
+    const int picksLeft = cardSelectInfo.pickCount - 1;
+    const int selected = cardSelectInfo.retain_SelectedCount() + 1;
+    if (handIdx == CardSelectInfo::RETAIN_DONE_IDX) {
+        return;
+    }
+    CardInstance c = cards.hand[handIdx];
+    if (!c.isEthereal()) {
+        c.retain = true;
+    }
+    cards.removeFromHandAtIdx(handIdx);
+    cards.moveToHand(c);
+    if (picksLeft > 0) {
+        addToTop( Actions::RetainCardsAction(picksLeft, selected) );
+    }
+}
+
+void BattleContext::chooseSetupCard(int handIdx) {
+    CardInstance c = cards.hand[handIdx];
+    if (c.cost > 0) {
+        c.freeToPlayOnce = true;
+    }
+    cards.removeFromHandAtIdx(handIdx);
+    cards.moveToDrawPileTop(c);
 }
 
 void BattleContext::chooseCodexCard(CardId id) {
@@ -3630,10 +3733,7 @@ void BattleContext::chooseGambleCards(const fixed_list<int, 10> &idxs) {
     // assume idxs is sorted in descending order
     addToTop( Actions::DrawCards(listCopy.size()) );
     for (const auto handIdx : listCopy) {
-        auto c = cards.hand[handIdx];
-        cards.removeFromHandAtIdx(handIdx);
-        cards.moveToDiscardPile(c);
-        onManualDiscard(c);
+        discardFromHand(handIdx);
     }
 }
 

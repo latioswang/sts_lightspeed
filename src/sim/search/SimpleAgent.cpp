@@ -475,8 +475,16 @@ void search::SimpleAgent::stepBattleCardSelect(BattleContext &bc) {
             break;
 
         case CardSelectTask::EXHAUST_ONE:
+        case CardSelectTask::RECYCLE:
+        case CardSelectTask::DISCARD:
+        case CardSelectTask::NIGHTMARE:
+        case CardSelectTask::SETUP:
             setupCardOptionsHelper(actions, bc.cards.hand.begin(), bc.cards.hand.begin() + bc.cards.cardsInHand);
             break;
+
+        case CardSelectTask::RETAIN: // keep nothing
+            takeAction(bc, search::Action(search::ActionType::SINGLE_CARD_SELECT, CardSelectInfo::RETAIN_DONE_IDX));
+            return;
 
         case CardSelectTask::FORETHOUGHT:
         case CardSelectTask::WARCRY:
@@ -542,6 +550,7 @@ void search::SimpleAgent::stepBattleCardSelect(BattleContext &bc) {
 
         case CardSelectTask::EXHAUST_ONE:
         case CardSelectTask::RECYCLE:
+        case CardSelectTask::DISCARD:
             takeAction(bc, actions.back().first);
             break;
 

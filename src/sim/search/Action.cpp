@@ -147,6 +147,7 @@ bool isValidSingleCardSelectAction(const BattleContext &bc, const search::Action
             }
             return bc.cards.exhaustPile[a.getSelectIdx()].id != sts::CardId::EXHUME;
 
+        case CardSelectTask::DISCARD:
         case CardSelectTask::EXHAUST_ONE:
         case CardSelectTask::FORETHOUGHT:
         case CardSelectTask::NIGHTMARE:
@@ -154,6 +155,10 @@ bool isValidSingleCardSelectAction(const BattleContext &bc, const search::Action
         case CardSelectTask::SETUP:
         case CardSelectTask::WARCRY:
             return a.getSelectIdx() >= 0 && a.getSelectIdx() < bc.cards.cardsInHand;
+
+        case CardSelectTask::RETAIN:
+            return a.getSelectIdx() == CardSelectInfo::RETAIN_DONE_IDX ||
+                   (a.getSelectIdx() >= 0 && a.getSelectIdx() < bc.cards.cardsInHand - bc.cardSelectInfo.data0);
 
         case CardSelectTask::ARMAMENTS:
             if (a.getSelectIdx() < 0 || a.getSelectIdx() >= bc.cards.cardsInHand) {
@@ -397,9 +402,23 @@ void executeSingleCardSelectActionHelper(BattleContext &bc, search::Action a) {
             bc.chooseDrawToHandCards(&idx, 1);
             break;
 
-        case CardSelectTask::MEDITATE:
+        case CardSelectTask::DISCARD:
+            bc.chooseDiscardCard(idx);
+            break;
+
         case CardSelectTask::NIGHTMARE:
+            bc.chooseNightmareCard(idx);
+            break;
+
+        case CardSelectTask::RETAIN:
+            bc.chooseRetainCard(idx);
+            break;
+
         case CardSelectTask::SETUP:
+            bc.chooseSetupCard(idx);
+            break;
+
+        case CardSelectTask::MEDITATE:
             // not implemented
         case CardSelectTask::INVALID:
         default:
@@ -515,8 +534,18 @@ std::vector<search::Action> search::Action::enumerateCardSelectActions(const Bat
 
         case CardSelectTask::EXHAUST_ONE:
         case CardSelectTask::RECYCLE:
+        case CardSelectTask::DISCARD:
+        case CardSelectTask::NIGHTMARE:
+        case CardSelectTask::SETUP:
             setupCardOptionsHelper(actions, bc.cards.hand.begin(), bc.cards.hand.begin() + bc.cards.cardsInHand);
             break;
+
+        case CardSelectTask::RETAIN: { // picked cards are at the end of the hand, and the screen can close at any point
+            const int selected = bc.cardSelectInfo.data0;
+            setupCardOptionsHelper(actions, bc.cards.hand.begin(), bc.cards.hand.begin() + bc.cards.cardsInHand - selected);
+            actions.emplace_back(search::ActionType::SINGLE_CARD_SELECT, CardSelectInfo::RETAIN_DONE_IDX);
+            break;
+        }
 
         case CardSelectTask::FORETHOUGHT:
         case CardSelectTask::WARCRY:

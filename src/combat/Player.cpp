@@ -511,6 +511,14 @@ void Player::wouldDie(BattleContext &bc) {
     bc.outcome = Outcome::PLAYER_LOSS;
 }
 
+void Player::addNightmare(const CardInstance &c) {
+    if (nightmareCount < MAX_NIGHTMARES) {
+        nightmareCards[nightmareCount] = c;
+        nightmareCards[nightmareCount].setCostForTurn(c.cost); // NightmarePower runs resetAttributes on its copy
+        ++nightmareCount;
+    }
+}
+
 void Player::applyEndOfTurnPowers(BattleContext &bc) {
     // Powers trigger in the order they were gained. This pair shows: Combust's HP loss draws (Runic Cube, Centennial
     // Puzzle) only if No Draw has already gone.
@@ -595,15 +603,19 @@ void Player::applyEndOfTurnPowers(BattleContext &bc) {
                 bc.addToTop(Actions::DecrementStatus<PS::REGEN>());
                 break;
 
-                //case RetainCardPower -> if not has relic runic pyramid and not has power equilibrium, addToBot retain cards action
+            case PS::RETAIN_CARDS:
+                if (bc.cards.cardsInHand > 0 && !hasRelic<R::RUNIC_PYRAMID>() && !hasStatus<PS::EQUILIBRIUM>()) {
+                    bc.addToBot( Actions::RetainCardsAction(pair.second) );
+                }
+                break;
 
             case PS::RITUAL:
                 bc.addToBot(Actions::BuffPlayer<PS::STRENGTH>(pair.second));
                 break;
                 // case TheBomb
 
-            case PS::WRAITH_FORM: // todo does this debuff or just decrement?
-                bc.addToBot(Actions::DecrementStatus<PS::DEXTERITY>(pair.second));
+            case PS::WRAITH_FORM: // an ApplyPowerAction with a negative DexterityPower, so Artifact stops it
+                bc.addToBot(Actions::DebuffPlayer<PS::DEXTERITY>(pair.second, false));
                 break;
 
             default:
@@ -794,7 +806,9 @@ void Player::applyStartOfTurnPowers(BattleContext &bc) {
                 break;
 
             case PS::INFINITE_BLADES:
-                bc.addToBot(Actions::MakeTempCardInHand(CardId::SHIV, hasStatus<PS::MASTER_REALITY>(), pair.second) );
+                if (!bc.monsters.areMonstersBasicallyDead()) {
+                    bc.addToBot(Actions::MakeTempCardInHand(CardId::SHIV, hasStatus<PS::MASTER_REALITY>(), pair.second) );
+                }
                 break;
 
             case PS::LOOP:
@@ -847,6 +861,11 @@ void Player::applyStartOfTurnPowers(BattleContext &bc) {
         }
 
     }
+
+    for (int i = 0; i < nightmareCount; ++i) { // MakeTempCardInHandAction makes a stat equivalent copy of the power's card each time
+        bc.addToBot( Actions::MakeTempCardInHand(nightmareCards[i], NIGHTMARE_COPIES) );
+    }
+    nightmareCount = 0;
 }
 
 void Player::applyStartOfTurnPostDrawRelics(BattleContext &bc) {
@@ -883,23 +902,25 @@ void Player::applyStartOfTurnPostDrawPowers(BattleContext &bc) {
                 bc.addToBot( Actions::BuffPlayer<PS::MANTRA>(pair.second) ); // todo make buffing mantra switch stance
                 break;
 
-            case PS::DRAW_CARD_NEXT_TURN:
-                bc.addToBot( Actions::DrawCards(pair.second) );
-                removeStatus<PS::DRAW_CARD_NEXT_TURN>();
-                break;
-
             case PS::NOXIOUS_FUMES:
                 bc.addToBot( Actions::DebuffAllEnemy<MS::POISON>(pair.second) );
-                break;
-
-            case PS::TOOLS_OF_THE_TRADE:
-                bc.addToBot( Actions::DrawCards(pair.second) );
-//                bc.addToBot( Actions::SetState(InputState::CHOOSE_DISCARD_CARDS, pair.second) );
                 break;
 
             default:
                 break;
         }
+    }
+
+    // Powers go in order of priority, and these two are the only ones here above the default.
+    if (hasStatus<PS::DRAW_CARD_NEXT_TURN>()) { // priority 20
+        bc.addToBot( Actions::DrawCards(getStatus<PS::DRAW_CARD_NEXT_TURN>()) );
+        removeStatus<PS::DRAW_CARD_NEXT_TURN>();
+    }
+
+    if (hasStatus<PS::TOOLS_OF_THE_TRADE>()) { // priority 25
+        const int tools = getStatus<PS::TOOLS_OF_THE_TRADE>();
+        bc.addToBot( Actions::DrawCards(tools) );
+        bc.addToBot( Actions::DiscardAction(tools) );
     }
 }
 

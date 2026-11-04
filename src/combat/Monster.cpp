@@ -22,7 +22,7 @@ void Monster::applyStartOfTurnPowers(BattleContext &bc) {
     }
 
     if (hasStatus<MS::CHOKED>()) {
-        setHasStatus<MS::CHOKED>(false);
+        removeStatus<MS::CHOKED>();
     }
 
     if (hasStatus<MS::FLIGHT>()) {
@@ -34,7 +34,7 @@ void Monster::applyStartOfTurnPowers(BattleContext &bc) {
     }
 
     if (hasStatus<MS::POISON>() && !bc.monsters.areMonstersBasicallyDead()) {
-        bc.addToBot(Actions::PoisonLoseHpAction());
+        bc.addToBot(Actions::PoisonLoseHpAction(idx, getStatus<MS::POISON>()));
     }
 }
 
@@ -286,6 +286,9 @@ void Monster::die(BattleContext &bc) {
     }
     --bc.monsters.monstersAlive;
 
+    // Awakened One and the Darklings run onDeath before they clear their powers.
+    const int corpseExplosionDamage = maxHp * getStatus<MS::CORPSE_EXPLOSION>();
+
     if (id == MonsterId::AWAKENED_ONE && !miscInfo) { // is awakened one stage 1 // todo change to status
         halfDead = true;
         removeDebuffs();
@@ -316,9 +319,8 @@ void Monster::die(BattleContext &bc) {
         returnStasisCard(bc);
     }
 
-    if (hasStatus<MS::CORPSE_EXPLOSION>()) {
-        int damage = maxHp * getStatus<MS::CORPSE_EXPLOSION>();
-        bc.addToBot( Actions::DamageAllEnemy(damage) );
+    if (corpseExplosionDamage > 0) {
+        bc.addToBot( Actions::DamageAllEnemy(corpseExplosionDamage) );
     }
 
     if (bc.player.hasRelic<RelicId::GREMLIN_HORN>()) {
@@ -505,6 +507,16 @@ void Monster::damage(BattleContext &bc, int damage) {
     } else {
         return;
     }
+}
+
+// AbstractMonster.damage with HP_LOSS: decrementBlock leaves block alone, and CurlUp, Malleable, Flight, Thorns and the like
+// all check for this type, so what's left is what any other damage goes through once it's past block. A monster's Intangible
+// only works through atDamageFinalReceive, which nothing calls on this DamageInfo, so Nemesis loses the full amount.
+void Monster::loseHp(BattleContext &bc, int amount) {
+    if (isDeadOrEscaped() || amount <= 0) {
+        return;
+    }
+    damageUnblockedHelper(bc, amount);
 }
 
 void Monster::onHpLost(BattleContext &bc, int amount) {

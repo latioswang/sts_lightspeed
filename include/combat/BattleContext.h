@@ -189,6 +189,10 @@ namespace sts {
         void noOpRollMove(); // called by monsters to manipulate the aiRng counter when their rollMove function doesn't do anything
 
         void onManualDiscard(const CardInstance &c);
+        // CardGroup.moveToDiscardPile, triggerOnManualDiscard and GameActionManager.incrementDiscard. Cards in the discard pile from
+        // flyingFrom on, by default just this one, left with this action and land after it: they miss Eviscerate's discount.
+        void discardFromHand(int handIdx, int flyingFrom=-1);
+        [[nodiscard]] DamageMatrix calculateMultiDamage(const CardInstance &card, int baseDamage) const; // AbstractCard.multiDamage
         void onShuffle();
         void triggerAndMoveToExhaustPile(CardInstance c);
         void mummifiedHandOnUsePower();
@@ -199,6 +203,10 @@ namespace sts {
 
         // single card select helpers
         void chooseArmamentsCard(int handIdx);
+        void chooseDiscardCard(int handIdx);
+        void chooseNightmareCard(int handIdx);
+        void chooseRetainCard(int handIdx);
+        void chooseSetupCard(int handIdx);
         void chooseCodexCard(CardId id);
         void chooseDiscardToHandCard(int discardIdx, bool forZeroCost);
         void chooseDiscoveryCard(CardId id);
@@ -317,7 +325,6 @@ namespace sts {
 
     template <MonsterStatus s>
     void BattleContext::debuffEnemy(int idx, int amount, bool isSourceMonster) {
-        // todo poison and snake skull
         Monster &e = monsters.arr[idx];
 
         // ApplyPowerAction does nothing to a dead, half-dead or escaped target.
@@ -328,6 +335,11 @@ namespace sts {
         if (e.hasStatus<MS::ARTIFACT>()) {
             e.decrementStatus<MS::ARTIFACT>();
             return;
+        }
+
+        // ApplyPowerAction's constructor adds Snake Skull's point to whatever the player applies.
+        if (s == MS::POISON && player.hasRelic<RelicId::SNECKO_SKULL>()) {
+            ++amount;
         }
 
         e.addDebuff<s>(amount, isSourceMonster);
