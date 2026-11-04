@@ -1300,7 +1300,7 @@ void BattleContext::useAttackCard() {
             break;
 
         case CardId::BLIZZARD:
-            addToBot( Actions::AttackAllEnemy((up ? 3 : 2) * player.frostChanneled) );
+            addToBot( Actions::AttackAllEnemy((up ? 3 : 2) * player.frostChanneled + player.getStatus<PS::VIGOR>()) );
             break;
 
         case CardId::BULLSEYE: // the game's Lock-On
@@ -1329,7 +1329,7 @@ void BattleContext::useAttackCard() {
             break;
 
         case CardId::DOOM_AND_GLOOM:
-            addToBot( Actions::AttackAllEnemy(up ? 14 : 10) );
+            addToBot( Actions::AttackAllEnemy((up ? 14 : 10) + player.getStatus<PS::VIGOR>()) );
             addToBot( Actions::ChannelOrb(Orb::DARK) );
             break;
 
@@ -1343,7 +1343,7 @@ void BattleContext::useAttackCard() {
             break;
 
         case CardId::HYPERBEAM:
-            addToBot( Actions::AttackAllEnemy(up ? 34 : 26) );
+            addToBot( Actions::AttackAllEnemy((up ? 34 : 26) + player.getStatus<PS::VIGOR>()) );
             addToBot( Actions::DebuffPlayer<PS::FOCUS>(-3, false) );
             break;
 
@@ -1381,7 +1381,7 @@ void BattleContext::useAttackCard() {
             break;
 
         case CardId::SWEEPING_BEAM:
-            addToBot( Actions::AttackAllEnemy(up ? 9 : 6) );
+            addToBot( Actions::AttackAllEnemy((up ? 9 : 6) + player.getStatus<PS::VIGOR>()) );
             addToBot( Actions::DrawCards(1) );
             break;
 
