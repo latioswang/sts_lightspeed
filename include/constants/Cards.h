@@ -560,6 +560,7 @@ namespace sts {
             case CardId::DOPPELGANGER:
             case CardId::MALAISE:
             case CardId::NIGHTMARE:
+            case CardId::TERROR:
 
             case CardId::BOOT_SEQUENCE:
             case CardId::CHILL:
@@ -756,6 +757,18 @@ namespace sts {
             case CardId::SEEK:
             case CardId::STEAM_BARRIER:
             case CardId::TURBO:
+            case CardId::ADRENALINE:
+            case CardId::CALCULATED_GAMBLE:
+            case CardId::CONCENTRATE:
+            case CardId::DEFLECT:
+            case CardId::ENDLESS_AGONY:
+            case CardId::ESCAPE_PLAN:
+            case CardId::GRAND_FINALE:
+            case CardId::MASTERFUL_STAB:
+            case CardId::NEUTRALIZE:
+            case CardId::PREPARED:
+            case CardId::SHIV:
+            case CardId::SLICE:
                 return 0;
 
             case CardId::DEFEND_BLUE:
@@ -802,6 +815,16 @@ namespace sts {
             case CardId::HYPERBEAM:
             case CardId::RAINBOW:
             case CardId::STREAMLINE:
+            case CardId::A_THOUSAND_CUTS:
+            case CardId::BOUNCING_FLASK:
+            case CardId::CHOKE:
+            case CardId::CORPSE_EXPLOSION:
+            case CardId::CRIPPLING_CLOUD:
+            case CardId::DASH:
+            case CardId::LEG_SWEEP:
+            case CardId::PREDATOR:
+            case CardId::RIDDLE_WITH_HOLES:
+            case CardId::SNEAKY_STRIKE:
                 return 2;
 
             case CardId::BARRICADE:
@@ -815,9 +838,12 @@ namespace sts {
             case CardId::ECHO_FORM:
             case CardId::SUNDER:
             case CardId::THUNDER_STRIKE:
+            case CardId::EVISCERATE:
                 return 3;
 
+            case CardId::BULLET_TIME:
             case CardId::CREATIVE_AI:
+            case CardId::NIGHTMARE:
                 return upgraded ? 2 : 3;
 
             case CardId::FORCE_FIELD:
@@ -838,6 +864,7 @@ namespace sts {
             case CardId::MIND_BLAST:
             case CardId::DARK_EMBRACE:
             case CardId::ENTRENCH:
+            case CardId::ENVENOM:
                 return upgraded ? 1 : 2;
 
             case CardId::HAVOC:
@@ -852,6 +879,12 @@ namespace sts {
             case CardId::RECYCLE:
             case CardId::WHITE_NOISE:
             case CardId::ZAP:
+            case CardId::ALCHEMIZE:
+            case CardId::DISTRACTION:
+            case CardId::PHANTASMAL_KILLER:
+            case CardId::SETUP:
+            case CardId::TERROR:
+            case CardId::TOOLS_OF_THE_TRADE:
                 return upgraded ? 0 : 1;
 
 
@@ -861,12 +894,16 @@ namespace sts {
             case CardId::MULTI_CAST:
             case CardId::REINFORCED_BODY:
             case CardId::TEMPEST:
+            case CardId::DOPPELGANGER:
+            case CardId::SKEWER:
                 return -1;
 
             case CardId::BURN:
             case CardId::DAZED:
             case CardId::VOID:
             case CardId::WOUND:
+            case CardId::REFLEX:
+            case CardId::TACTICIAN:
                 return -2;
 
             case CardId::ASCENDERS_BANE:
