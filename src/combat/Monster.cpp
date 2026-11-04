@@ -496,11 +496,8 @@ void Monster::damage(BattleContext &bc, int damage) {
         damage = 0;
     }
 
-    if (hasStatus<MS::INTANGIBLE>()) { // this is probably wrong with potions
-        if (damage > 0) {
-            damage = 1;
-        }
-    }
+    // A monster's IntangiblePower only works through atDamageFinalReceive, in applyPowers or applyEnemyPowersOnly. Nothing that comes
+    // through here runs those: orbs, Thorns and the DamageInfo.createDamageMatrix(x, true) damage keep their amount.
 
     const bool hadBlock = block > 0;
     const int tempDamage = damage;

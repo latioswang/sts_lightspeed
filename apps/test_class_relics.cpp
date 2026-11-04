@@ -537,6 +537,46 @@ void cables() {
     CHECK_EQ(none.damageTaken(), 0);
 }
 
+// Nemesis's Intangible only lowers what goes through applyPowers or applyEnemyPowersOnly.
+void monsterIntangible() {
+    Fight tingsha(CharacterClass::SILENT, {RelicId::TINGSHA});
+    tingsha.monster().buff<MS::INTANGIBLE>(2);
+    tingsha.toHand(CardId::WOUND);
+    tingsha.toHand(CardId::WOUND);
+    tingsha.discardOne();
+    CHECK_EQ(tingsha.damageTaken(), 3);
+
+    // Cracked Core's Lightning hits it for 3 at the end of the turn, and it would be evoked for 8.
+    Fight orb(CharacterClass::DEFECT, {});
+    orb.monster().buff<MS::INTANGIBLE>(5);
+    orb.bc.player.buff<PS::BARRICADE>();
+    orb.endTurn();
+    CHECK_EQ(orb.damageTaken(), 3);
+    orb.run( Actions::EvokeOrb() );
+    CHECK_EQ(orb.damageTaken(), 11);
+
+    Fight hourglass(CharacterClass::IRONCLAD, {RelicId::MERCURY_HOURGLASS});
+    hourglass.monster().buff<MS::INTANGIBLE>(5);
+    hourglass.endTurn();
+    CHECK_EQ(hourglass.damageTaken(), 3);
+
+    Fight explosive(CharacterClass::IRONCLAD, {});
+    explosive.monster().buff<MS::INTANGIBLE>(2);
+    explosive.drink(Potion::EXPLOSIVE_POTION);
+    CHECK_EQ(explosive.damageTaken(), 10);
+
+    // Fire Potion runs applyEnemyPowersOnly, and an attack runs applyPowers.
+    Fight fire(CharacterClass::IRONCLAD, {});
+    fire.monster().buff<MS::INTANGIBLE>(2);
+    fire.drink(Potion::FIRE_POTION);
+    CHECK_EQ(fire.damageTaken(), 1);
+
+    Fight strike(CharacterClass::IRONCLAD, {});
+    strike.monster().buff<MS::INTANGIBLE>(2);
+    strike.play(CardId::STRIKE_RED);
+    CHECK_EQ(strike.damageTaken(), 1);
+}
+
 // ******** Watcher ********
 
 void watcherStart() {
@@ -1024,6 +1064,7 @@ int main(int argc, char **argv) {
     frozenCore();
     emotionChip();
     cables();
+    monsterIntangible();
 
     watcherStart();
     damaru();
