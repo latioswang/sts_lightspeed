@@ -3038,6 +3038,7 @@ void BattleContext::chooseArmamentsCard(int handIdx) {
 
 void BattleContext::chooseCodexCard(CardId id) {
     CardInstance c(id);
+    c.tookDamageTimes(player.timesDamagedThisCombat);
     c.uniqueId = static_cast<std::int16_t>(cards.nextUniqueCardId++);
     cards.notifyAddCardToCombat(c);
     cards.shuffleIntoDrawPile(cardRandomRng, c);
