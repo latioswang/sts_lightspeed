@@ -946,6 +946,88 @@ void lessonLearned() {
     CHECK_EQ(bc.upgradableDeckIdxs.size(), 1u);
 }
 
+// ******** Found by reading the game a second time ********
+
+void secondReading() {
+    for (int seed = 0; seed < 300; ++seed) {  // getAnyColorCard leaves out the HEALING attacks
+        Fight f;
+        f.bc.cardRandomRng = Random(static_cast<std::uint64_t>(seed) + 1);
+        f.bc.cardRng = Random(static_cast<std::uint64_t>(seed) + 5000);
+        f.play(CardId::FOREIGN_INFLUENCE);
+        for (const auto id : f.bc.cardSelectInfo.cards) {
+            CHECK(id != CardId::FEED && id != CardId::REAPER && id != CardId::LESSON_LEARNED && id != CardId::BITE);
+            CHECK(getCardType(id) == CardType::ATTACK);
+        }
+    }
+
+    Fight collect;  // Collect's Miracle is queued ahead of the turn's draw
+    collect.calmPlayer();
+    for (int i = 0; i < 8; ++i) collect.toDraw(CardId::WOUND);
+    collect.bc.player.buff<PS::COLLECT>(1);
+    collect.endTurn();
+    CHECK_EQ(collect.bc.cards.cardsInHand, 6);
+    CHECK(collect.bc.cards.hand[0].getId() == CardId::MIRACLE);
+
+    Fight heart;  // Invincible can't stop Judgement
+    heart.monster().curHp = 25;
+    heart.monster().buff<MS::INVINCIBLE>(5);
+    heart.play(CardId::JUDGMENT);
+    CHECK(!heart.monster().isAlive());
+
+    Fight reduced(MonsterEncounter::JAW_WORM);  // Vault's skipped round doesn't tick Draw Reduction
+    reduced.calmPlayer();
+    for (int i = 0; i < 12; ++i) reduced.toDraw(CardId::WOUND);
+    reduced.bc.player.debuff<PS::DRAW_REDUCTION>(1, false);
+    reduced.bc.player.setJustApplied<PS::DRAW_REDUCTION>(false);
+    reduced.play(CardId::VAULT);
+    CHECK(reduced.bc.player.hasStatus<PS::DRAW_REDUCTION>());
+
+    Fight melange;  // the shuffle comes first, so Melange's scry has cards to look at
+    melange.calmPlayer();
+    melange.bc.player.setHasRelic<R::MELANGE>(true);
+    melange.toDiscard(CardId::WOUND);
+    melange.toDiscard(CardId::WOUND);
+    melange.bc.player.buff<PS::FORESIGHT>(1);
+    melange.endTurn();
+    CHECK(melange.selecting(CardSelectTask::SCRY));
+    melange.select(CardSelectInfo::SCRY_DONE_IDX);
+    CHECK(melange.selecting(CardSelectTask::SCRY));
+    melange.select(CardSelectInfo::SCRY_DONE_IDX);
+
+    Fight top;  // Unceasing Top needs an empty queue, and the card's UseCardAction is still in it
+    top.calmPlayer();
+    top.bc.player.setHasRelic<R::UNCEASING_TOP>(true);
+    for (int i = 0; i < 6; ++i) top.toDraw(CardId::WOUND);
+    top.play(CardId::CONCLUDE);
+    CHECK_EQ(top.bc.cards.drawPile.size(), 1u);
+
+    Fight surrounded(MonsterEncounter::SHIELD_AND_SPEAR);  // Wrath doubles a back attack's intent too
+    surrounded.bc.player.lastTargetedMonster = 1;
+    surrounded.bc.player.buff<PS::SURROUNDED>();
+    const int plain = surrounded.monster(0).intentDamageToPlayer(surrounded.bc, 10);
+    surrounded.bc.player.stance = Stance::WRATH;
+    CHECK_EQ(surrounded.monster(0).intentDamageToPlayer(surrounded.bc, 10), plain * 2);
+
+    Fight omni;  // each copy has its own uuid
+    omni.toDraw(CardId::STRIKE_PURPLE);
+    const auto originalId = omni.bc.cards.drawPile[0].getUniqueId();
+    omni.play(CardId::OMNISCIENCE);
+    omni.select(0);
+    CHECK_EQ(omni.bc.cards.exhaustPile.back().getUniqueId(), originalId);
+    CHECK_EQ(omni.damageTaken(), 12);
+
+    Fight potion;  // Stance Potion is the same screen as Wish's
+    potion.bc.potions[0] = Potion::STANCE_POTION;
+    potion.bc.potionCount = 1;
+    potion.bc.drinkPotion(0);
+    potion.bc.inputState = InputState::EXECUTING_ACTIONS;
+    potion.bc.executeActions();
+    CHECK(potion.selecting(CardSelectTask::CHOOSE_STANCE));
+    CHECK_EQ(SAction::enumerateCardSelectActions(potion.bc).size(), 2u);
+    potion.select(1);
+    CHECK(potion.bc.player.stance == Stance::CALM);
+}
+
 // ******** Every purple card, played at random ********
 
 const std::vector<CardId> &purpleCards() {
@@ -1104,6 +1186,7 @@ int main(int argc, char **argv) {
     powersOverTurns();
     screens();
     lessonLearned();
+    secondReading();
 
     std::map<CardId, int> played;
     randomFights(randomFightCount, played);

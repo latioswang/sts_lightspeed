@@ -374,6 +374,10 @@ void BattleSimulator::printCardSelectActions(std::ostream &os) const {
                << ", 2 " << getCardName(bc->cardSelectInfo.cards[2]) << "\n";
             break;
 
+        case CardSelectTask::CHOOSE_STANCE:
+            os << "Choose one: 0 Wrath, 1 Calm\n";
+            break;
+
         case CardSelectTask::RETAIN:
             os << "Well-Laid Plans: Choose a card to keep, " << bc->cardSelectInfo.pickCount << " left, or " << CardSelectInfo::RETAIN_DONE_IDX << " to stop.\n";
             printCardOptionsHelper(os, bc->cards.hand.begin(), bc->cards.hand.begin() + bc->cards.cardsInHand - bc->cardSelectInfo.data0);
@@ -522,6 +526,10 @@ void BattleSimulator::takeCardSelectAction(const std::string &action) {
 
         case CardSelectTask::WISH:
             bc->chooseWishOption(std::stoi(action));
+            break;
+
+        case CardSelectTask::CHOOSE_STANCE:
+            bc->chooseStanceOption(std::stoi(action));
             break;
 
         case CardSelectTask::DISCARD:

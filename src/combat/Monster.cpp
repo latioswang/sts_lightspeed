@@ -663,6 +663,9 @@ int Monster::intentDamageToPlayer(const BattleContext &bc, int baseDamage) const
     if (p.hasStatus<PS::VULNERABLE>()) {
         damage *= p.hasRelic<RelicId::ODD_MUSHROOM>() ? 1.25f : 1.5f;
     }
+    if (p.stance == Stance::WRATH) { // stance.atDamageReceive comes ahead of the back attack in calculateDamage
+        damage *= 2;
+    }
     damage = static_cast<float>(static_cast<int>(damage * 1.5f));
     if (p.hasStatus<PS::INTANGIBLE>()) {
         damage = std::min(damage, static_cast<float>(1));

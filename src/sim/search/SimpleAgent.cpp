@@ -494,6 +494,7 @@ void search::SimpleAgent::stepBattleCardSelect(BattleContext &bc) {
         case CardSelectTask::WISH:
         case CardSelectTask::MEDITATE:
         case CardSelectTask::OMNISCIENCE:
+        case CardSelectTask::CHOOSE_STANCE:
             takeAction(bc, search::Action(search::ActionType::SINGLE_CARD_SELECT, 0));
             return;
 

@@ -160,7 +160,7 @@ namespace sts {
         void callEndOfTurnActions(); // GameActionManager.callEndTurnActions(), called when the end turn cardQueue item is reached.
         void onTurnEnding(); // AbstractRoom endTurn(), called when the turn actually ends.
 
-        void callEndTurnEarlySequence(); // time eater
+        void callEndTurnEarlySequence(bool queueStillRunning=false); // time eater, and PressEndTurnButtonAction
 
         void applyEndOfRoundPowers(); // game : MonsterGroup applyEndOfTurnPowers
         void afterMonsterTurns();
@@ -225,6 +225,7 @@ namespace sts {
         void chooseOmniscienceCard(int drawIdx);
         void chooseForeignInfluenceCard(int choice);
         void chooseWishOption(int choice);
+        void chooseStanceOption(int choice);
         void chooseCodexCard(CardId id);
         void chooseDiscardToHandCard(int discardIdx, bool forZeroCost);
         void chooseDiscoveryCard(CardId id);

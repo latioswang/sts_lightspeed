@@ -862,7 +862,7 @@ void Player::applyStartOfTurnPowers(BattleContext &bc) {
             case PS::FORESIGHT:
                 if (bc.cards.drawPile.empty()) { // EmptyDeckShuffleAction's constructor runs the relics' onShuffle
                     bc.onShuffle();
-                    bc.addToBot( Actions::EmptyDeckShuffle() );
+                    bc.addToTop( Actions::EmptyDeckShuffle() );
                 }
                 bc.addToBot( Actions::ScryAction(pair.second) );
                 break;

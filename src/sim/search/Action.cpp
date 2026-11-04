@@ -171,6 +171,9 @@ bool isValidSingleCardSelectAction(const BattleContext &bc, const search::Action
         case CardSelectTask::WISH:
             return a.getSelectIdx() >= 0 && a.getSelectIdx() < 3;
 
+        case CardSelectTask::CHOOSE_STANCE:
+            return a.getSelectIdx() >= 0 && a.getSelectIdx() < 2;
+
         case CardSelectTask::ARMAMENTS:
             if (a.getSelectIdx() < 0 || a.getSelectIdx() >= bc.cards.cardsInHand) {
                 return false;
@@ -449,6 +452,10 @@ void executeSingleCardSelectActionHelper(BattleContext &bc, search::Action a) {
             bc.chooseWishOption(idx);
             break;
 
+        case CardSelectTask::CHOOSE_STANCE:
+            bc.chooseStanceOption(idx);
+            break;
+
         case CardSelectTask::INVALID:
         default:
             break;
@@ -596,6 +603,11 @@ std::vector<search::Action> search::Action::enumerateCardSelectActions(const Bat
             for (int i = 0; i < 3; ++i) {
                 actions.emplace_back(search::ActionType::SINGLE_CARD_SELECT, i);
             }
+            break;
+
+        case CardSelectTask::CHOOSE_STANCE:
+            actions.emplace_back(search::ActionType::SINGLE_CARD_SELECT, 0);
+            actions.emplace_back(search::ActionType::SINGLE_CARD_SELECT, 1);
             break;
 
         case CardSelectTask::FORETHOUGHT:

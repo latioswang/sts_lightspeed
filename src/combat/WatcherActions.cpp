@@ -150,6 +150,7 @@ void BattleContext::chooseOmniscienceCard(int drawIdx) {
     const CardInstance c = cards.drawPile[drawIdx];
     cards.removeFromDrawPileAtIdx(drawIdx);
 
+    // makeStatEquivalentCopy gives each copy its own uuid, unlike Double Tap's.
     CardQueueItem item(c, -1, player.energy);
     item.randomTarget = true;
     item.autoplay = true;
@@ -158,7 +159,9 @@ void BattleContext::chooseOmniscienceCard(int drawIdx) {
     addToBotCard(item);
 
     for (int i = 0; i < playCount - 1; ++i) {
-        CardQueueItem copy(c, -1, player.energy);
+        CardInstance copied = c;
+        copied.setUniqueId(cards.nextUniqueCardId++);
+        CardQueueItem copy(copied, -1, player.energy);
         copy.randomTarget = true;
         copy.autoplay = true;
         copy.freeToPlay = true;
@@ -181,6 +184,11 @@ void BattleContext::chooseForeignInfluenceCard(int choice) {
     }
 }
 
+// ChooseWrath, then ChooseCalm. A potion's choice is the same screen as Wish's.
+void BattleContext::chooseStanceOption(int choice) {
+    addToBot( Actions::ChangeStance(choice == 0 ? Stance::WRATH : Stance::CALM) );
+}
+
 // The three option cards' onChoseThisOption. Their stats are on the option cards, which Wish+ upgrades.
 void BattleContext::chooseWishOption(int choice) {
     const bool upgraded = cardSelectInfo.wish_Upgraded();
@@ -200,8 +208,17 @@ void BattleContext::chooseWishOption(int choice) {
 }
 
 namespace {
+    // The attacks with the HEALING tag, which CardLibrary.getAnyColorCard(type, rarity) leaves out and these pools don't.
+    bool isHealingAttack(CardId id) {
+        return id == CardId::BITE || id == CardId::FEED || id == CardId::LESSON_LEARNED || id == CardId::REAPER;
+    }
+
+    bool canOfferAttack(CardId id) {
+        return getCardType(id) == CardType::ATTACK && !isHealingAttack(id);
+    }
+
     // CardLibrary.getAnyColorCard(type, rarity): its shuffle rolls cardRandomRng and changes nothing, since getRandomCard sorts
-    // the list by id and picks with cardRng. The pools here hold every type, in that order, and leave out HEALING cards.
+    // the list by id and picks with cardRng. The pools here hold every type, in that order.
     CardId anyColorAttack(Random &cardRandomRng, Random &cardRng, CardRarity rarity) {
         const CardId *pool = AnyColorTypeCardPool::commonCards;
         int poolSize = AnyColorTypeCardPool::commonPoolSize;
@@ -215,7 +232,7 @@ namespace {
 
         int attackCount = 0;
         for (int i = 0; i < poolSize; ++i) {
-            if (getCardType(pool[i]) == CardType::ATTACK) {
+            if (canOfferAttack(pool[i])) {
                 ++attackCount;
             }
         }
@@ -223,7 +240,7 @@ namespace {
         cardRandomRng.randomLong();
         int pick = cardRng.random(attackCount - 1);
         for (int i = 0; i < poolSize; ++i) {
-            if (getCardType(pool[i]) == CardType::ATTACK && pick-- == 0) {
+            if (canOfferAttack(pool[i]) && pick-- == 0) {
                 return pool[i];
             }
         }
@@ -245,7 +262,7 @@ Action Actions::ScryAction(int amount) {
 
 Action Actions::PressEndTurnButton() {
     return {[] (BattleContext &bc) {
-        bc.callEndTurnEarlySequence();
+        bc.callEndTurnEarlySequence(true);  // the card's UseCardAction is still in the queue
     }};
 }
 
@@ -391,14 +408,17 @@ Action Actions::InnerPeaceAction(int amount) {
     }};
 }
 
-// JudgementAction queues an InstantKillAction, which sets the HP to 0 and deals HP loss: past block and anything like Invincible.
+// JudgementAction queues an InstantKillAction, which sets the HP to 0 before any damage, so nothing like Invincible can stop it.
 Action Actions::JudgementAction(int idx, int cutoff) {
     return {[=] (BattleContext &bc) {
         if (bc.monsters.arr[idx].curHp <= cutoff) {
             bc.addToTop( {[=] (BattleContext &inner) {
                 auto &m = inner.monsters.arr[idx];
-                m.loseHp(inner, m.curHp);
-                inner.checkCombat();
+                if (!m.isDeadOrEscaped()) {
+                    m.curHp = 0;
+                    m.die(inner);
+                    inner.checkCombat();
+                }
             }} );
         }
     }};
@@ -498,6 +518,12 @@ Action Actions::WallopAction(int idx, int damage) {
             bc.addToTop( Actions::GainBlock(taken) );
         }
         bc.checkCombat();
+    }};
+}
+
+Action Actions::ChooseStanceAction() {
+    return {[] (BattleContext &bc) {
+        bc.openSimpleCardSelectScreen(CardSelectTask::CHOOSE_STANCE, 1);
     }};
 }
 

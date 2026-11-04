@@ -204,6 +204,7 @@ namespace sts {
         static Action TriggerMarksAction();
         static Action WallopAction(int idx, int damage);
         static Action WishAction(bool upgraded); // ChooseOneAction
+        static Action ChooseStanceAction(); // ChooseOneAction with ChooseWrath and ChooseCalm: Stance Potion
 
         static Action ExhaustTopCardInHand();
         static Action ExhaustSpecificCardInHand(int idx, std::int16_t uniqueId);

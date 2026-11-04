@@ -380,6 +380,11 @@ void search::BattleScumSearcher2::enumerateCardSelectActions(search::BattleScumS
             }
             break;
 
+        case CardSelectTask::CHOOSE_STANCE:
+            node.edges.push_back({search::Action(search::ActionType::SINGLE_CARD_SELECT, 0)});
+            node.edges.push_back({search::Action(search::ActionType::SINGLE_CARD_SELECT, 1)});
+            break;
+
         case CardSelectTask::FORETHOUGHT:
         case CardSelectTask::WARCRY:
             setupCardOptionsHelper(node, bc.cards.hand.begin(), bc.cards.hand.begin() + bc.cards.cardsInHand);

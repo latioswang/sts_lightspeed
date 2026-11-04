@@ -41,6 +41,7 @@ namespace sts {
         OMNISCIENCE,
         SCRY,
         WISH,
+        CHOOSE_STANCE,
     };
 
     static constexpr const char* cardSelectTaskStrings[] = {
@@ -71,6 +72,7 @@ namespace sts {
             "OMNISCIENCE",
             "SCRY",
             "WISH",
+            "CHOOSE_STANCE",
     };
 
     struct CardSelectInfo {

@@ -3419,7 +3419,7 @@ void BattleContext::onTurnEnding() {
     addToBot(Actions::UnnamedEndOfTurnAction());
 }
 
-void BattleContext::callEndTurnEarlySequence() {
+void BattleContext::callEndTurnEarlySequence(bool queueStillRunning) {
     while (!cardQueue.isEmpty()) {
         auto item = cardQueue.popFront();
         if (item.autoplay && !item.purgeOnUse) {
@@ -3427,7 +3427,8 @@ void BattleContext::callEndTurnEarlySequence() {
         }
     }
     // Unceasing Top still sees the empty hand while the end of the turn is queued. Seen on the real game with Time Warp.
-    if (player.hasRelic<R::UNCEASING_TOP>() && cards.cardsInHand == 0) {
+    // UnceasingTop.onRefreshHand needs an empty action queue, so it can't go off from inside a card's own actions.
+    if (!queueStillRunning && player.hasRelic<R::UNCEASING_TOP>() && cards.cardsInHand == 0) {
         addToBot( Actions::DrawCards(1) );
     }
     addToTopCard(CardQueueItem::endTurnItem());
@@ -3504,9 +3505,13 @@ void BattleContext::afterMonsterTurns() {
         return;
     }
 
-    addToBot(Actions::DrawCards(player.cardDrawPerTurn)); // in this action, an effect queue item is added to rechard energy lol
+    // DrawCardAction's constructor makes the PlayerTurnEffect that recharges energy, so Collect's Miracle is queued ahead of this draw.
+    player.rechargeEnergy(*this);
 
-    if (player.hasStatus<PS::DRAW_REDUCTION>()) {
+    addToBot(Actions::DrawCards(player.cardDrawPerTurn));
+
+    // DrawReductionPower.atEndOfRound, which Vault's skipped round doesn't reach.
+    if (roundEnded && player.hasStatus<PS::DRAW_REDUCTION>()) {
         if (player.wasJustApplied<PS::DRAW_REDUCTION>()) {
             player.setJustApplied<PS::DRAW_REDUCTION>(false);
         } else {
@@ -3523,8 +3528,6 @@ void BattleContext::afterMonsterTurns() {
     player.attacksPlayedThisTurn = 0;
     player.skillsPlayedThisTurn = 0;
     player.cardsDiscardedThisTurn = 0;
-
-    player.rechargeEnergy(*this); // this is called by the PlayerTurnEffect in game, I think it can be done here
 }
 
 void BattleContext::obtainPotion(Potion p) {
@@ -3738,7 +3741,7 @@ void BattleContext::drinkPotion(int idx, int target) {
             break;
 
         case Potion::STANCE_POTION:
-            addToBot(Actions::SetState(InputState::CHOOSE_STANCE_ACTION));
+            addToBot(Actions::ChooseStanceAction());
             break;
 
         case Potion::STRENGTH_POTION:
