@@ -628,6 +628,11 @@ void BattleContext::updateRelicsOnExit(GameContext &g) const {
         }
 
     }
+
+    // AbstractPlayer.onVictory goes through the relics and then the powers.
+    if (outcome == Outcome::PLAYER_VICTORY && player.hasStatus<PS::SELF_REPAIR>()) {
+        g.playerHeal(victoryHeal(player.getStatus<PS::SELF_REPAIR>()));
+    }
 }
 
 void cardOnExit(const CardInstance &c, Deck &deck) {
@@ -815,6 +820,9 @@ void BattleContext::executeActions() {
         if (cards.cardsInHand + cards.discardPile.size() + cards.drawPile.size() == 0) {
             bool hasDamageWithoutCards = player.hasStatus<PS::OMEGA>() ||
                     player.hasStatus<PS::THORNS>() ||
+                    player.hasOrb() ||
+                    player.hasStatus<PS::HELLO_WORLD>() ||
+                    player.hasStatus<PS::CREATIVE_AI>() ||
                     player.bomb1 ||
                     player.bomb2 ||
                     player.bomb3;
@@ -1973,6 +1981,68 @@ void BattleContext::usePowerCard() {
             addToBot( Actions::DebuffPlayer<PS::WRAITH_FORM>(1) );
             break;
 
+        // ************************* Defect, ported from Attemory/sts_lightspeed and checked against the game *************************
+
+        case CardId::BIASED_COGNITION:
+            addToBot( Actions::BuffPlayer<PS::FOCUS>(up ? 5 : 4) );
+            addToBot( Actions::DebuffPlayer<PS::BIAS>(1, false) );
+            break;
+
+        case CardId::BUFFER:
+            addToBot( Actions::BuffPlayer<PS::BUFFER>(up ? 2 : 1) );
+            break;
+
+        case CardId::CAPACITOR:
+            addToBot( Actions::IncreaseOrbSlots(up ? 3 : 2) );
+            break;
+
+        case CardId::CREATIVE_AI:
+            addToBot( Actions::BuffPlayer<PS::CREATIVE_AI>(1) );
+            break;
+
+        case CardId::DEFRAGMENT:
+            addToBot( Actions::BuffPlayer<PS::FOCUS>(up ? 2 : 1) );
+            break;
+
+        case CardId::ECHO_FORM:
+            addToBot( Actions::BuffPlayer<PS::ECHO_FORM>(1) );
+            break;
+
+        case CardId::ELECTRODYNAMICS:
+            if (!player.hasStatus<PS::ELECTRO>()) {
+                addToBot( Actions::BuffPlayer<PS::ELECTRO>(1) );
+            }
+            addToBot( Actions::ChannelOrbs(Orb::LIGHTNING, up ? 3 : 2) );
+            break;
+
+        case CardId::HEATSINKS:
+            addToBot( Actions::BuffPlayer<PS::HEATSINK>(up ? 2 : 1) );
+            break;
+
+        case CardId::HELLO_WORLD:
+            addToBot( Actions::BuffPlayer<PS::HELLO_WORLD>(1) );
+            break;
+
+        case CardId::LOOP:
+            addToBot( Actions::BuffPlayer<PS::LOOP>(up ? 2 : 1) );
+            break;
+
+        case CardId::MACHINE_LEARNING:
+            addToBot( Actions::BuffPlayer<PS::MACHINE_LEARNING>(1) );
+            break;
+
+        case CardId::SELF_REPAIR:
+            addToBot( Actions::BuffPlayer<PS::SELF_REPAIR>(up ? 10 : 7) );
+            break;
+
+        case CardId::STATIC_DISCHARGE:
+            addToBot( Actions::BuffPlayer<PS::STATIC_DISCHARGE>(up ? 2 : 1) );
+            break;
+
+        case CardId::STORM:
+            addToBot( Actions::BuffPlayer<PS::STORM>(1) );
+            break;
+
         default:
 #ifdef sts_asserts
             std::cerr << "attempted to use unimplemented card: " << c.getName() << std::endl;
@@ -2240,6 +2310,37 @@ void BattleContext::onUsePowerCard() {
         addToBot( Actions::DamageAllEnemy(p.getStatus<PS::PANACHE>()) );
     }
 
+    if (!item.purgeOnUse && p.hasStatus<PS::AMPLIFY>()) {
+        queuePurgeCard(c, item.target);
+        p.decrementStatus<PS::AMPLIFY>();
+    }
+
+    if (p.hasStatus<PS::HEATSINK>()) {
+        addToTop( Actions::DrawCards(p.getStatus<PS::HEATSINK>()) );
+    }
+
+    if (p.hasStatus<PS::STORM>()) {
+        addToBot( Actions::ChannelOrbs(Orb::LIGHTNING, p.getStatus<PS::STORM>()) );
+    }
+
+    // Force Field's triggerOnCardPlayed, and its constructor counts cardsPlayedThisCombat for the deck's next copy.
+    ++p.powersPlayedThisCombat;
+    for (int i = 0; i < cards.cardsInHand; ++i) {
+        if (cards.hand[i].getId() == CardId::FORCE_FIELD) {
+            cards.hand[i].updateCost(-1);
+        }
+    }
+    for (auto &card : cards.discardPile) {
+        if (card.getId() == CardId::FORCE_FIELD) {
+            card.updateCost(-1);
+        }
+    }
+    for (auto &card : cards.drawPile) {
+        if (card.getId() == CardId::FORCE_FIELD) {
+            card.updateCost(-1);
+        }
+    }
+
     // ********* Relics onUseCard *********
 
     if (p.hasRelic<R::BIRD_FACED_URN>()) {
@@ -2331,8 +2432,20 @@ void BattleContext::onUseStatusOrCurseCard() {
 void BattleContext::onAfterUseCard() {
     auto &item = curCardQueueItem;
     auto &c = item.card;
+    bool rebound = false;
 
     if (item.triggerOnUse) {
+        // ReboundPower.onAfterUseCard runs for every card that triggers, including copies and powers, and skips the Rebound
+        // that applied it. A Rebound played under another one is sent back like any other card.
+        if (player.hasStatus<PS::REBOUND>()) {
+            if (player.reboundJustApplied) {
+                player.reboundJustApplied = false;
+            } else {
+                rebound = c.getType() != CardType::POWER;
+                player.decrementStatus<PS::REBOUND>();
+            }
+        }
+
         auto &m = monsters.arr[0];
         if (m.hasStatus<MS::TIME_WARP>()) {
             auto timeWarp = m.getStatus<MS::TIME_WARP>();
@@ -2358,22 +2471,11 @@ void BattleContext::onAfterUseCard() {
         return;
     }
 
-    bool rebound = false;
     c.freeToPlayOnce = false;
 
     if (c.getType() == CardType::POWER) {
         c.id = CardId::INVALID;
         return;
-    }
-
-    if (player.hasStatus<PS::REBOUND>()) {
-        if (player.getStatus<PS::REBOUND>() == 1) {
-            rebound = true;
-            player.setHasStatus<PS::REBOUND>(false);
-
-        } else {
-            player.setStatusValueNoChecks<PS::REBOUND>(1);
-        }
     }
 
     bool spoonProc = false;

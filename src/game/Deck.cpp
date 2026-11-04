@@ -122,6 +122,11 @@ void Deck::transformRandomCards(Random &miscRng, int count) {
 void Deck::obtain(GameContext &gc, Card card, int count) {
     const auto type = card.getType();
 
+    // A new Force Field is made cheaper by the Power cards played in the last fight, and keeps that for good.
+    if (card.getId() == CardId::FORCE_FIELD && card.misc == 0) {
+        card.misc = gc.powersPlayedLastCombat;
+    }
+
     switch (type) {
         case CardType::ATTACK:
             transformableCount += count;

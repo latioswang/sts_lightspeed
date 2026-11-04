@@ -3729,6 +3729,9 @@ void GameContext::chooseSelectCardScreenOption(int idx) {
         case CardSelectScreenType::OBTAIN:
             for (const auto &c : info.haveSelectedCards) {
                 deck.obtain(*this, c.card, 1);
+                if (info.selectScreenType == CardSelectScreenType::DUPLICATE && c.card.getId() == CardId::FORCE_FIELD) {
+                    deck.cards.back().misc = c.card.misc; // a copy keeps the cost of the card it copies
+                }
             }
             regainControl();
             break;
