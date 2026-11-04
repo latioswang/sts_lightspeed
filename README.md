@@ -2,6 +2,8 @@
 
 > **This is branch `fidelity` of a fork.** It changes the simulator to match the real game, checked side by side by playing the same seeds on both. The [fix list](https://github.com/latioswang/sts/blob/realgame/bridge/research/realgame/reports/simulator_fixes.md) has every change with the seed that found it, and the [progress log](https://github.com/latioswang/sts/blob/realgame/bridge/research/realgame/PROGRESS.md) has the results and what's left. The simulator doesn't match completely yet: other classes' cards, reachable through Prismatic Shard, still do nothing. The rest of this README is upstream's.
 
+> Other classes' cards are adapted from [Attemory/sts_lightspeed](https://github.com/Attemory/sts_lightspeed) (Defect) and [hewzhew/SpireSim](https://github.com/hewzhew/SpireSim) (Silent and Watcher), with [klottick/spire-gym](https://github.com/klottick/spire-gym) as a second reference, all MIT licensed. Each card was checked against the game's own rules, which won wherever they disagreed.
+
 For tree search and simulation of the popular rogue-like deckbuilder game Slay The Spire
 
 **Features**
