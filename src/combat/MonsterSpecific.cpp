@@ -1352,8 +1352,8 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             break;
 
         case MMID::THE_GUARDIAN_VENT_STEAM:
-            bc.addToBot( Actions::DebuffPlayer<PS::VULNERABLE>(2, true) );
             bc.addToBot( Actions::DebuffPlayer<PS::WEAK>(2, true) );
+            bc.addToBot( Actions::DebuffPlayer<PS::VULNERABLE>(2, true) );
             setMove(MMID::THE_GUARDIAN_WHIRLWIND);
             break;
 
