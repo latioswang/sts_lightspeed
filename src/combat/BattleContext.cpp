@@ -2842,7 +2842,7 @@ int BattleContext::calculateCardDamage(const CardInstance &card, int targetIdx, 
     }
 
     if (monster.hasStatus<MS::INTANGIBLE>()) {
-        damage = std::max(damage, 1.0f);
+        damage = std::min(damage, 1.0f);  // Body Slam with no block stays at 0
     }
 
     return std::max(0, static_cast<int>(damage));
