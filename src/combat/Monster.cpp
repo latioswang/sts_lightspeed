@@ -496,8 +496,11 @@ void Monster::damage(BattleContext &bc, int damage) {
         damage = 0;
     }
 
-    // A monster's IntangiblePower only works through atDamageFinalReceive, in applyPowers or applyEnemyPowersOnly. Nothing that comes
-    // through here runs those: orbs, Thorns and the DamageInfo.createDamageMatrix(x, true) damage keep their amount.
+    if (hasStatus<MS::INTANGIBLE>()) { // Nemesis.damage does this to all damage, whatever its type
+        if (damage > 0) {
+            damage = 1;
+        }
+    }
 
     const bool hadBlock = block > 0;
     const int tempDamage = damage;
@@ -522,7 +525,8 @@ void Monster::loseHp(BattleContext &bc, int amount) {
     if (isDeadOrEscaped() || amount <= 0) {
         return;
     }
-    damageUnblockedHelper(bc, amount);
+    // Poison and Mark are a DamageInfo of type HP_LOSS, and Nemesis.damage takes those down to 1 as well.
+    damageUnblockedHelper(bc, hasStatus<MS::INTANGIBLE>() ? 1 : amount);
 }
 
 void Monster::onHpLost(BattleContext &bc, int amount) {

@@ -3665,8 +3665,7 @@ void BattleContext::drinkPotion(int idx, int target) {
             break;
 
         case Potion::FIRE_POTION:
-            // The one that runs DamageInfo.applyEnemyPowersOnly, when it's drunk.
-            addToBot( Actions::DamageEnemy(target, monsters.arr[target].hasStatus<MS::INTANGIBLE>() ? 1 : (hasBark ? 40 : 20)) );
+            addToBot( Actions::DamageEnemy(target, hasBark ? 40 : 20) );
             break;
 
         case Potion::FLEX_POTION:
