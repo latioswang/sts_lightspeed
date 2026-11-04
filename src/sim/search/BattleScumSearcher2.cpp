@@ -344,6 +344,7 @@ void search::BattleScumSearcher2::enumerateCardSelectActions(search::BattleScumS
             break;
 
         case CardSelectTask::EXHAUST_ONE:
+        case CardSelectTask::RECYCLE:
             setupCardOptionsHelper(node, bc.cards.hand.begin(), bc.cards.hand.begin() + bc.cards.cardsInHand);
             break;
 
@@ -353,8 +354,13 @@ void search::BattleScumSearcher2::enumerateCardSelectActions(search::BattleScumS
             break;
 
         case CardSelectTask::HEADBUTT:
+        case CardSelectTask::HOLOGRAM:
         case CardSelectTask::LIQUID_MEMORIES_POTION:
             setupCardOptionsHelper(node, bc.cards.discardPile.begin(), bc.cards.discardPile.end());
+            break;
+
+        case CardSelectTask::SEEK:
+            setupCardOptionsHelper(node, bc.cards.drawPile.begin(), bc.cards.drawPile.end());
             break;
 
         case CardSelectTask::SECRET_TECHNIQUE:

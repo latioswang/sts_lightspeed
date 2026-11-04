@@ -389,11 +389,17 @@ void executeSingleCardSelectActionHelper(BattleContext &bc, search::Action a) {
             bc.chooseWarcryCard(idx);
             break;
 
+        case CardSelectTask::RECYCLE:
+            bc.chooseRecycleCard(idx);
+            break;
+
+        case CardSelectTask::SEEK:
+            bc.chooseDrawToHandCards(&idx, 1);
+            break;
+
         case CardSelectTask::MEDITATE:
         case CardSelectTask::NIGHTMARE:
-        case CardSelectTask::RECYCLE:
         case CardSelectTask::SETUP:
-        case CardSelectTask::SEEK:
             // not implemented
         case CardSelectTask::INVALID:
         default:
@@ -508,6 +514,7 @@ std::vector<search::Action> search::Action::enumerateCardSelectActions(const Bat
             break;
 
         case CardSelectTask::EXHAUST_ONE:
+        case CardSelectTask::RECYCLE:
             setupCardOptionsHelper(actions, bc.cards.hand.begin(), bc.cards.hand.begin() + bc.cards.cardsInHand);
             break;
 
@@ -517,8 +524,13 @@ std::vector<search::Action> search::Action::enumerateCardSelectActions(const Bat
             break;
 
         case CardSelectTask::HEADBUTT:
+        case CardSelectTask::HOLOGRAM:
         case CardSelectTask::LIQUID_MEMORIES_POTION:
             setupCardOptionsHelper(actions, bc.cards.discardPile.begin(), bc.cards.discardPile.end());
+            break;
+
+        case CardSelectTask::SEEK:
+            setupCardOptionsHelper(actions, bc.cards.drawPile.begin(), bc.cards.drawPile.end());
             break;
 
         case CardSelectTask::SECRET_TECHNIQUE:

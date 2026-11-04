@@ -643,10 +643,10 @@ void cardOnExit(const CardInstance &c, Deck &deck) {
         deckCard.misc = c.specialData;
     }
 
-    // todo
-//    if (c.getId() == CardId::GENETIC_ALGORITHM) {
-//        deckCard.misc = c.specialData;
-//    }
+    // IncreaseMiscAction also raises the deck's copy.
+    if (c.getId() == CardId::GENETIC_ALGORITHM) {
+        deckCard.misc = c.specialData;
+    }
 }
 
 void BattleContext::updateCardsOnExit(Deck &deck) const {
@@ -1673,6 +1673,203 @@ void BattleContext::useSkillCard() {
         case CardId::WARCRY:
             addToBot( Actions::DrawCards(up ? 2 : 1) );
             addToBot( Actions::WarcryAction() );
+            break;
+
+        // ************************* Defect, ported from Attemory/sts_lightspeed and checked against the game *************************
+
+        case CardId::AGGREGATE: {
+            const int divide = up ? 3 : 4;
+            addToBot( {[=] (BattleContext &bc) {
+                bc.player.gainEnergy(static_cast<int>(bc.cards.drawPile.size()) / divide);
+            }} );
+            break;
+        }
+
+        case CardId::AMPLIFY:
+            addToBot( Actions::BuffPlayer<PS::AMPLIFY>(up ? 2 : 1) );
+            break;
+
+        case CardId::AUTO_SHIELDS:
+            if (player.block == 0) { // checked when played, not when the action runs
+                addToBot( Actions::GainBlock(calculateCardBlock(up ? 15 : 11)) );
+            }
+            break;
+
+        case CardId::BOOT_SEQUENCE:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 13 : 10)) );
+            break;
+
+        case CardId::CHAOS: { // AbstractOrb.getRandomOrb, rolled when the card is played
+            static constexpr Orb orbList[] {Orb::DARK, Orb::FROST, Orb::LIGHTNING, Orb::PLASMA};
+            if (up) {
+                addToBot( Actions::ChannelOrb(orbList[cardRandomRng.random(3)]) );
+            }
+            addToBot( Actions::ChannelOrb(orbList[cardRandomRng.random(3)]) );
+            break;
+        }
+
+        case CardId::CHARGE_BATTERY: // the game's Conserve Battery
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 10 : 7)) );
+            addToBot( Actions::BuffPlayer<PS::ENERGIZED_BLUE>(1) );
+            break;
+
+        case CardId::CHILL:
+            for (int i = 0; i < monsters.monsterCount; ++i) {
+                if (!monsters.arr[i].isDeadOrEscaped()) {
+                    addToBot( Actions::ChannelOrb(Orb::FROST) );
+                }
+            }
+            break;
+
+        case CardId::CONSUME:
+            addToBot( Actions::BuffPlayer<PS::FOCUS>(up ? 3 : 2) );
+            addToBot( Actions::DecreaseOrbSlots(1) );
+            break;
+
+        case CardId::COOLHEADED:
+            addToBot( Actions::ChannelOrb(Orb::FROST) );
+            addToBot( Actions::DrawCards(up ? 2 : 1) );
+            break;
+
+        case CardId::DARKNESS:
+            addToBot( Actions::ChannelOrb(Orb::DARK) );
+            if (up) {
+                addToBot( Actions::DarkImpulseAction() );
+            }
+            break;
+
+        case CardId::DOUBLE_ENERGY:
+            addToBot( {[] (BattleContext &bc) {
+                bc.player.gainEnergy(bc.player.energy);
+            }} );
+            break;
+
+        case CardId::DUALCAST:
+            addToBot( Actions::EvokeWithoutRemovingOrb() );
+            addToBot( Actions::EvokeOrb() );
+            break;
+
+        case CardId::EQUILIBRIUM:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 16 : 13)) );
+            addToBot( Actions::BuffPlayer<PS::EQUILIBRIUM>(1) );
+            break;
+
+        case CardId::FISSION:
+            addToBot( Actions::FissionAction(up) );
+            break;
+
+        case CardId::FORCE_FIELD:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 16 : 12)) );
+            break;
+
+        case CardId::FUSION:
+            addToBot( Actions::ChannelOrb(Orb::PLASMA) );
+            break;
+
+        case CardId::GENETIC_ALGORITHM: // the block is taken from before the increase, which an upgrade makes 3
+            addToBot( Actions::IncreaseMiscAction(c.getUniqueId(), up ? 3 : 2) );
+            addToBot( Actions::GainBlock(calculateCardBlock(c.specialData)) );
+            break;
+
+        case CardId::GLACIER:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 10 : 7)) );
+            addToBot( Actions::ChannelOrbs(Orb::FROST, 2) );
+            break;
+
+        case CardId::HOLOGRAM:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 5 : 3)) );
+            addToBot( Actions::BetterDiscardPileToHandAction(1, CardSelectTask::HOLOGRAM) );
+            break;
+
+        case CardId::LEAP:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 12 : 9)) );
+            break;
+
+        case CardId::MULTI_CAST:
+            if (!item.ignoreEnergyTotal && player.energy < item.energyOnUse) {
+                item.energyOnUse = player.energy;
+            }
+            addToBot( Actions::MulticastAction(item.energyOnUse, up, !(item.autoplay || item.freeToPlay || c.freeToPlayOnce)) );
+            break;
+
+        case CardId::OVERCLOCK: // the game's Steam Power
+            addToBot( Actions::DrawCards(up ? 3 : 2) );
+            addToBot( Actions::MakeTempCardInDiscard(CardInstance(CardId::BURN)) );
+            break;
+
+        case CardId::RAINBOW:
+            addToBot( Actions::ChannelOrb(Orb::LIGHTNING) );
+            addToBot( Actions::ChannelOrb(Orb::FROST) );
+            addToBot( Actions::ChannelOrb(Orb::DARK) );
+            break;
+
+        case CardId::REBOOT:
+            onShuffle(); // ShuffleAllAction's constructor
+            addToBot( Actions::RebootShuffleAll() );
+            addToBot( Actions::ShuffleDrawPile() );
+            addToBot( Actions::DrawCards(up ? 6 : 4) );
+            break;
+
+        case CardId::RECURSION:
+            addToBot( Actions::RecursionAction() );
+            break;
+
+        case CardId::RECYCLE:
+            addToBot( Actions::RecycleAction() );
+            break;
+
+        case CardId::REINFORCED_BODY:
+            if (!item.ignoreEnergyTotal && player.energy < item.energyOnUse) {
+                item.energyOnUse = player.energy;
+            }
+            addToBot( Actions::ReinforcedBodyAction(calculateCardBlock(up ? 9 : 7), item.energyOnUse,
+                                                    !(item.autoplay || item.freeToPlay || c.freeToPlayOnce)) );
+            break;
+
+        case CardId::REPROGRAM:
+            addToBot( Actions::DebuffPlayer<PS::FOCUS>(up ? -2 : -1, false) );
+            addToBot( Actions::BuffPlayer<PS::STRENGTH>(up ? 2 : 1) );
+            addToBot( Actions::BuffPlayer<PS::DEXTERITY>(up ? 2 : 1) );
+            break;
+
+        case CardId::SEEK:
+            addToBot( Actions::SeekAction(up ? 2 : 1) );
+            break;
+
+        case CardId::SKIM:
+            addToBot( Actions::DrawCards(up ? 4 : 3) );
+            break;
+
+        case CardId::STACK: // Stack.applyPowers works its base block out from the discard pile
+            addToBot( Actions::GainBlock(calculateCardBlock(static_cast<int>(cards.discardPile.size()) + (up ? 3 : 0))) );
+            break;
+
+        case CardId::STEAM_BARRIER: // ModifyBlockAction takes one from baseBlock, which can go below 0 and then Dexterity starts from there
+            addToBot( Actions::GainBlock(calculateCardBlock((up ? 8 : 6) - c.specialData)) );
+            addToBot( Actions::ModifyBlockAction(c.getUniqueId()) );
+            break;
+
+        case CardId::TEMPEST:
+            if (!item.ignoreEnergyTotal && player.energy < item.energyOnUse) {
+                item.energyOnUse = player.energy;
+            }
+            addToBot( Actions::TempestAction(item.energyOnUse, up, !(item.autoplay || item.freeToPlay || c.freeToPlayOnce)) );
+            break;
+
+        case CardId::TURBO:
+            addToBot( Actions::GainEnergy(up ? 3 : 2) );
+            addToBot( Actions::MakeTempCardInDiscard(CardInstance(CardId::VOID)) );
+            break;
+
+        case CardId::WHITE_NOISE: { // rolled when the card is played, from the class's own pool as for every card made in combat
+            CardInstance power(getTrulyRandomCardInCombat(cardRandomRng, player.cc, CardType::POWER));
+            power.setCostForTurn(0);
+            addToBot( Actions::MakeTempCardInHand(power) );
+            break;
+        }
+
+        case CardId::ZAP:
+            addToBot( Actions::ChannelOrb(Orb::LIGHTNING) );
             break;
 
         default:
