@@ -2256,6 +2256,18 @@ void GameContext::afterEscape() {
     }
     Rewards discarded;
     addPotionRewards(discarded);
+    if (curRoom == Room::EVENT && curEvent == Event::COLOSSEUM) {
+        if (info.eventData == 0) {
+            // Colosseum.reopen offers the second choice however the first fight ended.
+            info.eventData = 1;
+            screenState = ScreenState::EVENT_SCREEN;
+            regainControlAction = returnToMapAction;
+            return;
+        }
+        // Colosseum takes these off their pools when the second fight is chosen, so escaping loses them.
+        returnRandomScreenlessRelic(RelicTier::RARE);
+        returnRandomScreenlessRelic(RelicTier::UNCOMMON);
+    }
     regainControlAction = returnToMapAction;
     regainControl();
 }
