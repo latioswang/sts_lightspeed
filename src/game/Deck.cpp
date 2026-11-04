@@ -39,7 +39,7 @@ bool Deck::isCardBottled(int idx) const {
 }
 
 bool Deck::anyCardBottled() const {
-    return bottleIdxs[0] == -1 || bottleIdxs[1] == -1 || bottleIdxs[2] == -1;
+    return bottleIdxs[0] != -1 || bottleIdxs[1] != -1 || bottleIdxs[2] != -1;
 }
 
 int Deck::getUpgradeableCount() const {
@@ -243,6 +243,15 @@ void Deck::remove(GameContext &gc, int idx) {
             gc.loseMaxHp(3);
         }
         cards.remove(idx);
+        // a bottled card further along moves down with the list
+        for (int i = 0; i < 3; ++i) {
+            if (bottleIdxs[i] > idx) {
+                --bottleIdxs[i];
+            }
+        }
+        if (c.getId() == CardId::NECRONOMICURSE) { // onRemoveFromMasterDeck puts a new one in the deck
+            cards.push_back(Card(CardId::NECRONOMICURSE));
+        }
         return;
     }
 
