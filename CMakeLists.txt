@@ -35,6 +35,11 @@ target_include_directories(small-test PUBLIC include)
 target_include_directories(small-test PUBLIC json/include)
 target_include_directories(small-test PUBLIC bindings)
 
+# Other classes' cards checked against what the game's bytecode does.
+add_executable(test_defect_cards EXCLUDE_FROM_ALL apps/test_defect_cards.cpp)
+target_include_directories(test_defect_cards PUBLIC include json/single_include)
+target_link_libraries(test_defect_cards stscore)
+
 # ---- research additions (leak-free agent + frozen eval) ----
 set(STS_RESEARCH_DIR /home/user/sts/research CACHE PATH "research/ directory of the latioswang/sts checkout")
 add_library(stscore STATIC ${sts_lightspeed_SOURCES})
