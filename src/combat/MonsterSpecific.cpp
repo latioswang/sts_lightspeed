@@ -3542,7 +3542,7 @@ void Monster::returnStasisCard(BattleContext &bc) {
     bc.addToBot({[=](BattleContext &b) {
         CardInstance card = returned;
         b.cards.notifyAddCardToCombat(card);
-        b.moveToHandHelper(card);
+        b.addNewCardToHand(card);
     }});
 }
 

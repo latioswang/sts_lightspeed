@@ -3953,6 +3953,21 @@ void BattleContext::moveToHandHelper(CardInstance c) {
     }
 }
 
+// It runs onCardDrawOrDiscard before Corruption sets the new card's cost for the turn, so a new skill is free for the
+// rest of the fight, as is any other skill in hand with a cost.
+void BattleContext::addNewCardToHand(CardInstance c) {
+    if (cards.cardsInHand >= CardManager::MAX_HAND_SIZE) {
+        cards.moveToDiscardPile(c);
+        return;
+    }
+    cards.moveToHand(c);
+    cards.onCardDrawOrDiscard(*this);
+    auto &added = cards.hand[cards.cardsInHand - 1];
+    if (player.hasStatus<PS::CORRUPTION>() && added.getType() == CardType::SKILL) {
+        added.setCostForTurn(-9);
+    }
+}
+
 void BattleContext::exhaustSpecificCardInHand(int idx, std::int16_t uniqueId) {
 
     int foundIdx = -1;
@@ -4545,10 +4560,12 @@ void BattleContext::chooseDiscoveryCard(CardId id) {
 
     for (int i = 0; i < discoveryAmount; ++i) {
         if (cards.cardsInHand + 1 <= CardManager::MAX_HAND_SIZE) {
-            if (player.hasStatus<PS::CORRUPTION>() && c.getType() == CardType::SKILL) {
-                c.setCostForTurn(-9);
-            }
             cards.createTempCardInHand(c);
+            cards.onCardDrawOrDiscard(*this);  // ShowCardAndAddToHandEffect, as in addNewCardToHand
+            auto &added = cards.hand[cards.cardsInHand - 1];
+            if (player.hasStatus<PS::CORRUPTION>() && added.getType() == CardType::SKILL) {
+                added.setCostForTurn(-9);
+            }
 
         } else {
             cards.createTempCardInDiscard(c);

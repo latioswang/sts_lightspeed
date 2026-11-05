@@ -178,6 +178,8 @@ namespace sts {
 
         void applyMakeCopy(CardInstance &c) const;
         void moveToHandHelper(CardInstance c);
+        // A new card from a MakeTemp action or a choice screen, the way ShowCardAndAddToHandEffect adds it.
+        void addNewCardToHand(CardInstance c);
         void upgradeIfMasterReality(CardInstance &c) const; // what MakeTempCard and the card effects do with Master Reality
         void changeStance(Stance newStance); // ChangeStanceAction
         void applyMantra(int amount);
