@@ -551,10 +551,11 @@ void Monster::onHpLost(BattleContext &bc, int amount) {
                 const int newModeShiftAmount = getStatus<MS::MODE_SHIFT>() - amount;
                 if (newModeShiftAmount <= 0) {
                     removeStatus<MS::MODE_SHIFT>();
-                    setMove(MMID::THE_GUARDIAN_DEFENSIVE_MODE);
-                    // ChangeStateAction queues the block when it runs, which lands it behind a queued monster start of turn
+                    // The move changes when ChangeStateAction runs, so the rest of the card still sees the attack.
+                    // It queues the block then too, which lands it behind a queued monster start of turn.
                     const int guardianIdx = idx;
                     bc.addToBot( Action{[=] (BattleContext &b) {
+                        b.monsters.arr[guardianIdx].setMove(MMID::THE_GUARDIAN_DEFENSIVE_MODE);
                         b.addToBot( Actions::MonsterGainBlock(guardianIdx, 20) );
                     }} );
                 } else {
