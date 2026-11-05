@@ -701,8 +701,9 @@ void assignRoomsRow(Map &map, RoomConstructorData &data, int row) {
         if (row == 0 || row == 8) {
             data.setNextDataOnly(node);
         } else if (row == 7 || row == 13) {
+            // A node that gets no room stays empty until the game's last pass makes it a
+            // monster, so the nodes after it mustn't see that monster as a sibling.
             assignRoomToNode(map, node, data);
-            data.setCurDataOnly(node);
         } else {
             assignRoomToNode(map, node, data);
             data.setData(node);
