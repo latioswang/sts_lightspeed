@@ -110,6 +110,17 @@ void BattleContext::initRelics(const GameContext &gc) {
     player.relicBits0 = gc.relics.relicBits0;
     player.relicBits1 = gc.relics.relicBits1;
 
+    // Relics act at the turn's end in the order gained, and Stone Calendar can end the fight before Nilry's Codex gets its turn.
+    for (const auto &r : gc.relics.relics) {
+        if (r.id == R::NILRYS_CODEX) {
+            break;
+        }
+        if (r.id == R::STONE_CALENDAR) {
+            miscBits.set(2);
+            break;
+        }
+    }
+
     fixed_list<RelicId, 4> atBattleStartPreDraw;
     fixed_list<RelicId, 8> atBattleStart;
     fixed_list<RelicId, 2> atTurnStartPostDraw;
@@ -3358,6 +3369,16 @@ void BattleContext::callEndOfTurnActions() {
         }
     }
 
+    const auto stoneCalendar = [this]() {
+        if (player.hasRelic<R::STONE_CALENDAR>() && turn == 6) {
+            addToBot(Actions::DamageAllEnemy(52));
+        }
+    };
+    const bool calendarBeforeCodex = miscBits.test(2);
+    if (calendarBeforeCodex) {
+        stoneCalendar();
+    }
+
     if (player.hasRelic<R::NILRYS_CODEX>()) {
         addToBot(Actions::CodexAction());
     }
@@ -3368,10 +3389,8 @@ void BattleContext::callEndOfTurnActions() {
         }
     }
 
-    if (player.hasRelic<R::STONE_CALENDAR>()) {
-        if (turn == 6) {
-            addToBot(Actions::DamageAllEnemy(52));
-        }
+    if (!calendarBeforeCodex) {
+        stoneCalendar();
     }
 
     // ********************* Player Powers AtEndOfTurnPreEndTurnCards *********************

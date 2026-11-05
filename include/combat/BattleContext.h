@@ -93,7 +93,7 @@ namespace sts {
 
         CardQueueItem curCardQueueItem;
 
-        std::bitset<32> miscBits; // 0 stolen gold check,
+        std::bitset<32> miscBits; // 0 stolen gold check, 1 escaped, 2 Stone Calendar gained before Nilry's Codex
 
         // Lesson Learned upgrades a random card in the master deck. These are filled in only if the deck holds one.
         static constexpr std::int16_t SEARING_BLOW_DECK_IDX = 0x4000; // a flag on an entry below: it stays after an upgrade
