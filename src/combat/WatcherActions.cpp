@@ -173,7 +173,9 @@ void BattleContext::chooseOmniscienceCard(int drawIdx) {
 void BattleContext::chooseForeignInfluenceCard(int choice) {
     CardInstance c(cardSelectInfo.cards[choice]);
     upgradeIfMasterReality(c);
-    c.tookDamageTimes(player.timesDamagedThisCombat);
+    if (c.getId() == CardId::BLOOD_FOR_BLOOD) {  // Masterful Stab's makeCopy is a plain new card
+        c.tookDamageTimes(player.timesDamagedThisCombat);
+    }
     if (cardSelectInfo.foreignInfluence_Upgraded()) {
         c.setCostForTurn(0);
     }

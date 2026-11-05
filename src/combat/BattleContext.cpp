@@ -3932,7 +3932,9 @@ void BattleContext::playTopCardInDrawPile(int monsterTargetIdx, bool exhausts) {
 
 // Blood for Blood's and Eviscerate's makeCopy set the new card's cost from the fight so far.
 void BattleContext::applyMakeCopy(CardInstance &c) const {
-    c.tookDamageTimes(player.timesDamagedThisCombat);
+    if (c.getId() == CardId::BLOOD_FOR_BLOOD) {  // Masterful Stab's makeCopy is a plain new card
+        c.tookDamageTimes(player.timesDamagedThisCombat);
+    }
     if (c.getId() == CardId::EVISCERATE) {
         c.setCostForTurn(c.cost - player.cardsDiscardedThisTurn);
     } else if (c.getId() == CardId::FORCE_FIELD) {
