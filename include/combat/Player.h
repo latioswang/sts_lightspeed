@@ -87,6 +87,8 @@ namespace sts {
         std::uint8_t powerOrderCount = 0;
         void notePowerGained(PlayerStatus s);
         void notePowerLost(PlayerStatus s);
+        // Whether a acts before b among the powers, in the game's order. One the order doesn't know about comes last.
+        [[nodiscard]] bool actsBefore(PlayerStatus a, PlayerStatus b) const;
 
         std::uint64_t relicBits0 = 0;
         std::uint64_t relicBits1 = 0;

@@ -3132,6 +3132,17 @@ void BattleContext::onUsePowerCard() {
         }
     }
 
+    // Storm and Hex queue their actions in the order the powers came, and both can roll cardRandomRng.
+    const auto storm = [this, &p]() {
+        if (p.hasStatus<PS::STORM>()) {
+            addToBot( Actions::ChannelOrbs(Orb::LIGHTNING, p.getStatus<PS::STORM>()) );
+        }
+    };
+    const bool stormBeforeHex = p.hasStatus<PS::HEX>() && p.actsBefore(PS::STORM, PS::HEX);
+    if (stormBeforeHex) {
+        storm();
+    }
+
     if (p.hasStatus<PS::HEX>()) {
         addToBot( Actions::MakeTempCardInDrawPile(CardInstance(CardId::DAZED), 1, true) );
     }
@@ -3150,8 +3161,8 @@ void BattleContext::onUsePowerCard() {
         addToTop( Actions::DrawCards(p.getStatus<PS::HEATSINK>()) );
     }
 
-    if (p.hasStatus<PS::STORM>()) {
-        addToBot( Actions::ChannelOrbs(Orb::LIGHTNING, p.getStatus<PS::STORM>()) );
+    if (!stormBeforeHex) {
+        storm();
     }
 
     // Force Field's triggerOnCardPlayed, and its constructor counts cardsPlayedThisCombat for the deck's next copy.

@@ -71,6 +71,16 @@ void Player::notePowerGained(PlayerStatus s) {
     ++powerOrderCount;
 }
 
+bool Player::actsBefore(PlayerStatus a, PlayerStatus b) const {
+    const auto ordered = powerOrder.begin() + powerOrderCount;
+    const auto ia = std::find(powerOrder.begin(), ordered, a);
+    const auto ib = std::find(powerOrder.begin(), ordered, b);
+    if (ia != ordered || ib != ordered) {
+        return ia < ib;
+    }
+    return a < b;  // statusMap's key order
+}
+
 void Player::notePowerLost(PlayerStatus s) {
     const auto end = powerOrder.begin() + powerOrderCount;
     const auto it = std::find(powerOrder.begin(), end, s);
