@@ -94,9 +94,12 @@ void BattleContext::init(const GameContext &gc, MonsterEncounter encounterToInit
 
     player.orbSlots = gc.masterMaxOrbs; // AbstractPlayer.preBattlePrep
 
-    cards.init(gc, *this);
+    const int innateBeyondDraw = cards.init(gc, *this);
 
     initRelics(gc);
+    if (innateBeyondDraw > 0) { // CardGroup.initializeDeck uses addToTurnStart, which waits for the queue to empty
+        addToBot( Actions::DrawCards(innateBeyondDraw) );
+    }
     player.energy += player.energyPerTurn;
 
     executeActions();
@@ -2632,9 +2635,6 @@ void BattleContext::usePowerCard() {
             break;
 
         case CardId::COMBUST:
-            if (player.hasStatus<PS::NO_DRAW>() && !player.hasStatus<PS::COMBUST>()) {
-                player.noDrawBeforeCombust = true;
-            }
             addToBot( Actions::BuffPlayer<PS::COMBUST>(up ? 7 : 5) );
             break;
 
@@ -4250,13 +4250,14 @@ void BattleContext::triggerAndMoveToExhaustPile(CardInstance c) {
         addToTop(Actions::DamageAllEnemy(3));
     }
 
-    if (player.hasRelic<R::DEAD_BRANCH>()){
+    // Dead Branch and Dark Embrace check areMonstersBasicallyDead themselves
+    if (player.hasRelic<R::DEAD_BRANCH>() && !monsters.areMonstersBasicallyDead()){
         CardInstance c(getTrulyRandomCardInCombat(cardRandomRng, player.cc));
         applyMakeCopy(c);
         addToBot(Actions::MakeTempCardInHand(c));
     }
 
-    if (player.hasStatus<PS::DARK_EMBRACE>()) {
+    if (player.hasStatus<PS::DARK_EMBRACE>() && !monsters.areMonstersBasicallyDead()) {
         addToBot(Actions::DrawCards(player.getStatus<PS::DARK_EMBRACE>()));
     }
 
@@ -4466,6 +4467,9 @@ void BattleContext::chooseDualWieldCard(int handIdx) {
 }
 
 void BattleContext::chooseDiscardToHandCard(int discardIdx, bool forZeroCost) {
+    if (cards.cardsInHand >= 10) {
+        return; // BetterDiscardPileToHandAction leaves it where it is in the pile, and the pile's order decides the next shuffle
+    }
     CardInstance c = cards.discardPile[discardIdx];
     cards.removeFromDiscard(discardIdx);
     if (forZeroCost) {

@@ -47,7 +47,7 @@ namespace sts {
         int drawPileBloodCardCount = 0;
         int discardPileBloodCardCount = 0;
 
-        void init(const GameContext &gc, BattleContext &bc); // returns count of innate cards
+        int init(const GameContext &gc, BattleContext &bc); // returns the innate cards beyond the first turn's draw
 
         void createDeckCardInstanceInDrawPile(const Card &card, int deckIdx, int drawIdx);
         void createTempCardInDrawPile(int insertIdx, CardInstance c);

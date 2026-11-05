@@ -821,7 +821,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
         case MMID::HEXAGHOST_SEAR: // 4
             attackPlayerHelper(bc, 6);
             bc.addToBot (
-                    Actions::MakeTempCardInDiscard(CardInstance(CardId::BURN, bc.turn > 8), asc19 ? 2 : 1)
+                    Actions::MakeTempCardInDiscard(CardInstance(CardId::BURN, bc.getMonsterTurnNumber() > 9), asc19 ? 2 : 1)
             );
             if (uniquePower0 == 0) {
                 setMove(MMID::HEXAGHOST_TACKLE);
@@ -885,7 +885,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             break;
 
         case MMID::LAGAVULIN_SLEEP:
-            if (bc.turn == 2 && hasStatus<MS::ASLEEP>()) {
+            if (bc.getMonsterTurnNumber() == 3 && hasStatus<MS::ASLEEP>()) { // idleCount only moves on a turn it takes
                 // The third idle turn wakes it with a SetMoveAction, so this one rolls nothing.
                 setHasStatus<MS::ASLEEP>(false);
                 decrementStatus<MS::METALLICIZE>(8);

@@ -104,7 +104,6 @@ namespace sts {
         bool emotionChipPulse = false; // EmotionChip.pulse: HP was lost since the last turn started
 
         int8_t  combustHpLoss = 0;
-        bool noDrawBeforeCombust = false; // powers act in the order gained, which statusMap doesn't keep
         int16_t  devaFormEnergyPerTurn = 0;
         int8_t  echoFormCardsDoubled = 0;
         int8_t  panacheCounter = 0;

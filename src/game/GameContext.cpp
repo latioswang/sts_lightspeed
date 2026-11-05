@@ -2060,7 +2060,7 @@ Event GameContext::getEvent(Random &eventRngCopy) {
     }
 
     if (tempLength == 0) {
-        return getShrine(eventRng);
+        return getShrine(eventRngCopy);
     }
 
     auto idx = eventRngCopy.random(tempLength-1);
@@ -2215,7 +2215,7 @@ void GameContext::loseGold(int amount, bool inShop) {
 }
 
 void GameContext::loseMaxHp(int amount) {
-    maxHp -= amount;
+    maxHp = std::max(1, maxHp - amount); // decreaseMaxHealth
     curHp = std::min(curHp, maxHp);
 }
 
@@ -2302,6 +2302,18 @@ void GameContext::discardPotionAtIdx(int idx) {
 #endif
     potions[idx] = Potion::EMPTY_POTION_SLOT;
     --potionCount;
+}
+
+// For an event that gives both. The game creates the curse's obtain effect first, and that's where Omamori checks, so the
+// relic found here can't stop this curse. Everything else about the curse happens after the relic is in.
+static void obtainRelicAndCurse(GameContext &gc, RelicId relic, CardId curse) {
+    if (relic == RelicId::OMAMORI) {
+        gc.deck.obtain(gc, curse);
+        gc.obtainRelic(relic);
+    } else {
+        gc.obtainRelic(relic);
+        gc.deck.obtain(gc, curse);
+    }
 }
 
 void GameContext::chooseNeowOption(const Neow::Option &o) {
@@ -2403,11 +2415,14 @@ void GameContext::chooseNeowOption(const Neow::Option &o) {
             regainControlAction(*this);
             break;
 
-        case Neow::Bonus::RANDOM_COLORLESS_2:
-            regainControlAction(*this); // hack because curse is received first
+        case Neow::Bonus::RANDOM_COLORLESS_2: {
+            // NeowReward.activate rolls these cards from cardRng, and the curse comes after them in update.
+            const auto reward = Neow::getColorlessCardReward(neowRng, cardRng, true);
+            regainControlAction(*this);
             regainControlAction = returnToMapAction;
-            openCombatRewardScreen(Neow::getColorlessCardReward(neowRng, cardRng, true));
+            openCombatRewardScreen(reward);
             break;
+        }
 
         case Neow::Bonus::REMOVE_TWO:
             openCardSelectScreen(CardSelectScreenType::REMOVE, 2);
@@ -2433,6 +2448,9 @@ void GameContext::chooseNeowOption(const Neow::Option &o) {
         case Neow::Bonus::TRANSFORM_TWO_CARDS:
             info.transformRng = NEOW_RNG;
             openCardSelectScreen(CardSelectScreenType::TRANSFORM, 2);
+            if (o.d == Neow::Drawback::CURSE) { // the grid already has its list, so the curse isn't on it
+                deck.obtain(*this, curseCardPool[cardRng.random(static_cast<int>(9))]);
+            }
             regainControlAction = returnToMapAction;
             break;
 
@@ -2547,8 +2565,7 @@ void GameContext::chooseEventOption(int idx) {
 
                 case 1: {
                     auto r = returnRandomScreenlessRelic(returnRandomRelicTier(relicRng, act), false);
-                    obtainRelic(r);
-                    deck.obtain(*this, CardId::SHAME);
+                    obtainRelicAndCurse(*this, r, CardId::SHAME);
                     regainControl();
                     break;
                 }
@@ -2607,8 +2624,7 @@ void GameContext::chooseEventOption(int idx) {
 
                 case 2: {
                     auto r = returnRandomScreenlessRelic(returnRandomRelicTier(relicRng, act));
-                    obtainRelic(r);
-                    deck.obtain(*this, CardId::REGRET);
+                    obtainRelicAndCurse(*this, r, CardId::REGRET);
                     regainControl();
                     break;
                 }
@@ -2669,9 +2685,17 @@ void GameContext::chooseEventOption(int idx) {
 
                 case 5: {
                     playerLoseHp(unfavorable ? 15 : 10);
-                    auto res = miscRng.random(2);
-                    auto book = res == 0 ? RelicId::NECRONOMICON :
-                                (res == 1 ? RelicId::ENCHIRIDION : RelicId::NILRYS_CODEX);
+                    // CursedTome.randomBook only offers the books the player lacks, and Circlet with none left.
+                    fixed_list<RelicId, 3> books;
+                    for (const auto b : {RelicId::NECRONOMICON, RelicId::ENCHIRIDION, RelicId::NILRYS_CODEX}) {
+                        if (!relics.has(b)) {
+                            books.push_back(b);
+                        }
+                    }
+                    if (books.empty()) {
+                        books.push_back(RelicId::CIRCLET);
+                    }
+                    const auto book = books[miscRng.random(static_cast<int>(books.size()) - 1)];
 
                     Rewards reward;
                     reward.addRelic(book);
@@ -2801,7 +2825,14 @@ void GameContext::chooseEventOption(int idx) {
 
                 case 1:
                     info.transformRng = MISC_RNG;
-                    openCardSelectScreen(CardSelectScreenType::TRANSFORM, 2);
+                    // DrugDealer.transform opens on every purgeable card, bottled ones too, unlike other events.
+                    info.toSelectCards.clear();
+                    for (int i = 0; i < deck.size(); ++i) {
+                        if (deck.cards[i].canTransform()) {
+                            info.toSelectCards.push_back({deck.cards[i], i});
+                        }
+                    }
+                    openCardSelectScreen(CardSelectScreenType::TRANSFORM, 2, false);
                     break;
 
                 case 2:
@@ -3429,18 +3460,12 @@ void GameContext::chooseEventOption(int idx) {
 
         case Event::THE_MAUSOLEUM: {
             if (idx == 0) {
-                // The game creates the curse's obtain effect first, and that's where Omamori checks, so the relic
-                // found here can't stop this curse. Everything else about the curse happens after the relic is in.
                 const auto result = miscRng.randomBoolean();
                 const auto relic = returnRandomScreenlessRelic(returnRandomRelicTier(relicRng, act));
-                if (relic == RelicId::OMAMORI && (result || unfavorable)) {
-                    deck.obtain(*this, CardId::WRITHE);
-                    obtainRelic(relic);
+                if (result || unfavorable) {
+                    obtainRelicAndCurse(*this, relic, CardId::WRITHE);
                 } else {
                     obtainRelic(relic);
-                    if (result || unfavorable) {
-                        deck.obtain(*this, CardId::WRITHE);
-                    }
                 }
                 regainControl();
 

@@ -12,7 +12,7 @@
 
 using namespace sts;
 
-void CardManager::init(const sts::GameContext &gc, BattleContext &bc) {
+int CardManager::init(const sts::GameContext &gc, BattleContext &bc) {
 
 //    masterDeckSize = gc.deck.size();
     nextUniqueCardId = gc.deck.size();
@@ -62,10 +62,8 @@ void CardManager::init(const sts::GameContext &gc, BattleContext &bc) {
         }
     }
 
-    int innateCount =  innateIdx - normalCount;
-    if (innateCount  > bc.player.cardDrawPerTurn) {
-        bc.addToBot( Actions::DrawCards(innateCount-bc.player.cardDrawPerTurn) );
-    }
+    const int innateCount = innateIdx - normalCount;
+    return std::max(0, innateCount - bc.player.cardDrawPerTurn);
 }
 
 void CardManager::createDeckCardInstanceInDrawPile(const Card &card, int deckIdx, int drawIdx) {
