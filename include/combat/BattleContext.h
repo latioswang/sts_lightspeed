@@ -77,6 +77,7 @@ namespace sts {
         bool endTurnQueued = false;
         bool turnHasEnded = false;
         bool skipMonsterTurn = false;
+        int monsterTurnsSkipped = 0; // by Vault. A monster's own counters don't move on a turn it doesn't take
 
         ActionQueue<50> actionQueue;
         CardQueue cardQueue;

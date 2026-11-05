@@ -62,6 +62,7 @@ void BattleContext::init(const GameContext &gc, MonsterEncounter encounterToInit
 
     monsterTurnIdx = 6;
     skipMonsterTurn = false;
+    monsterTurnsSkipped = 0;
     turnHasEnded = false;
     isBattleOver = false;
 
@@ -708,7 +709,7 @@ bool BattleContext::requiresStolenGoldCheck() const {
 }
 
 int BattleContext::getMonsterTurnNumber() const {
-    return turn+1; // todo;
+    return turn + 1 - monsterTurnsSkipped;
 }
 
 void BattleContext::setState(InputState s) {
@@ -3470,6 +3471,9 @@ void BattleContext::afterMonsterTurns() {
     }
 
     ++turn;
+    if (skipMonsterTurn) {
+        ++monsterTurnsSkipped;
+    }
     skipMonsterTurn = false;
     turnHasEnded = false;
 
