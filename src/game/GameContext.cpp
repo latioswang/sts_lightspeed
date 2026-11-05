@@ -2448,8 +2448,10 @@ void GameContext::chooseNeowOption(const Neow::Option &o) {
         case Neow::Bonus::TRANSFORM_TWO_CARDS:
             info.transformRng = NEOW_RNG;
             openCardSelectScreen(CardSelectScreenType::TRANSFORM, 2);
-            if (o.d == Neow::Drawback::CURSE) { // the grid already has its list, so the curse isn't on it
-                deck.obtain(*this, curseCardPool[cardRng.random(static_cast<int>(9))]);
+            if (o.d == Neow::Drawback::CURSE) {
+                // NeowReward.update rolls it at once, but its obtain effect takes a moment, so it isn't on the grid or in
+                // the deck yet. It started first, so it lands before the transformed cards.
+                info.neowCurse = curseCardPool[cardRng.random(static_cast<int>(9))];
             }
             regainControlAction = returnToMapAction;
             break;
@@ -3915,6 +3917,10 @@ void GameContext::selectScreenTransform() {
     }
 
     deck.removeSelected(*this, info.haveSelectedCards);
+    if (info.neowCurse != CardId::INVALID) {
+        deck.obtain(*this, info.neowCurse);
+        info.neowCurse = CardId::INVALID;
+    }
     for (const auto &c : info.haveSelectedCards) {
         Card transformCard = getTransformedCard(*rng, c.card.id);
         deck.obtain(*this, transformCard);

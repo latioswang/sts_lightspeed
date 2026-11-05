@@ -83,6 +83,7 @@ namespace sts {
 
         // CardSelectScreen
         RngReference transformRng = CARD_RNG;
+        CardId neowCurse = CardId::INVALID; // rolled when chosen, joins the deck once the cards are picked
         CardSelectScreenType selectScreenType = CardSelectScreenType::INVALID;
         int toSelectCount = 0;
         fixed_list<SelectScreenCard, Deck::MAX_SIZE> toSelectCards;
