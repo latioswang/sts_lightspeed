@@ -30,8 +30,30 @@ void BattleContext::init(const GameContext &gc, MonsterEncounter encounterToInit
     monsterHpRng = startRandom;
     shuffleRng = startRandom;
     cardRandomRng = startRandom;
+    if (gc.curRoom == Room::EVENT && gc.curEvent == Event::COLOSSEUM && gc.info.eventData == 1) {
+        // Its second fight is in the same room, so the streams carry on from the first.
+        aiRng = gc.aiRng;
+        monsterHpRng = gc.monsterHpRng;
+        shuffleRng = gc.shuffleRng;
+        cardRandomRng = gc.cardRandomRng;
+        shuffleRng.randomLong(); // Colosseum.reopen calls preBattlePrep, which shuffles a deck nothing uses
+    }
     miscRng = gc.miscRng;
     potionRng = gc.potionRng;
+    cardRng = gc.cardRng;
+
+    upgradableDeckIdxs.clear();
+    lessonLearnedUpgrades.clear();
+    const bool hasLessonLearned = std::any_of(gc.deck.cards.begin(), gc.deck.cards.end(),
+                                              [](const Card &c) { return c.getId() == CardId::LESSON_LEARNED; });
+    if (hasLessonLearned) {
+        for (int i = 0; i < gc.deck.size(); ++i) {
+            if (gc.deck.cards[i].canUpgrade()) {
+                const bool searingBlow = gc.deck.cards[i].getId() == CardId::SEARING_BLOW;
+                upgradableDeckIdxs.push_back(static_cast<std::int16_t>(searingBlow ? i | SEARING_BLOW_DECK_IDX : i));
+            }
+        }
+    }
 
     ascension = gc.ascension;
     outcome = Outcome::UNDECIDED;
@@ -40,6 +62,7 @@ void BattleContext::init(const GameContext &gc, MonsterEncounter encounterToInit
 
     monsterTurnIdx = 6;
     skipMonsterTurn = false;
+    monsterTurnsSkipped = 0;
     turnHasEnded = false;
     isBattleOver = false;
 
@@ -50,6 +73,7 @@ void BattleContext::init(const GameContext &gc, MonsterEncounter encounterToInit
     potionCapacity = gc.potionCapacity;
     potions = gc.potions;
 
+    player.cc = gc.cc;  // FIX: was never initialised -> Entropic Brew / Dead Branch used a garbage class pool
     player.curHp = gc.curHp;
     player.maxHp = gc.maxHp;
     player.gold = gc.gold;
@@ -67,6 +91,8 @@ void BattleContext::init(const GameContext &gc, MonsterEncounter encounterToInit
         player.cardDrawPerTurn += 1;
     }
     //addToBot(Actions::DrawCards(player.cardDrawPerTurn));
+
+    player.orbSlots = gc.masterMaxOrbs; // AbstractPlayer.preBattlePrep
 
     cards.init(gc, *this);
 
@@ -86,6 +112,11 @@ void BattleContext::initRelics(const GameContext &gc) {
     fixed_list<RelicId, 2> atTurnStartPostDraw;
 
     auto room = gc.curRoom;
+    // The relics below check the room's eliteTrigger. Dead Adventurer's fight and Colosseum's second fight set it too.
+    const bool eliteTrigger = room == Room::ELITE
+            || (room == Room::EVENT && (gc.curEvent == Event::DEAD_ADVENTURER || encounter == MonsterEncounter::COLOSSEUM_EVENT_NOBS));
+    // These check for a monster of type BOSS, not the room, and Mind Bloom's fight is against one.
+    const bool bossMonster = room == Room::BOSS || (room == Room::EVENT && gc.curEvent == Event::MINDBLOOM);
 
     auto &p = player;
 
@@ -101,7 +132,6 @@ void BattleContext::initRelics(const GameContext &gc) {
 
             case R::BAG_OF_MARBLES:
             case R::BAG_OF_PREPARATION:
-            case R::CLOCKWORK_SOUVENIR:
             case R::GREMLIN_VISAGE:
             case R::RED_MASK:
             case R::RING_OF_THE_SNAKE:
@@ -198,7 +228,9 @@ void BattleContext::initRelics(const GameContext &gc) {
             case R::PHILOSOPHERS_STONE:
                 for (int i = 0; i < monsters.monsterCount; ++i) {
                     auto &m = monsters.arr[i];
-                    m.buff<MS::STRENGTH>(1);
+                    if (m.isTargetable()) { // not the empty slots Bronze Automaton's orbs will use
+                        m.buff<MS::STRENGTH>(1);
+                    }
                 }
                 p.energyPerTurn++;
                 break;
@@ -228,13 +260,13 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::ANCIENT_TEA_SET:
-                if (gc.lastRoom == Room::REST) {
+                if (gc.relics.getRelicValue(R::ANCIENT_TEA_SET) == -2) {
                     p.gainEnergy(2);
                 }
                 break;
 
             case R::BLOOD_VIAL:
-                p.heal(2); // todo not correct
+                p.heal(2);
                 break;
 
             case R::BRONZE_SCALES:
@@ -250,7 +282,7 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::CRACKED_CORE:
-                p.channelOrb(Orb::LIGHTNING);
+                p.channelOrb(*this, Orb::LIGHTNING);
                 break;
 
             case R::CURSED_KEY:
@@ -258,16 +290,23 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::DAMARU:
-                p.buff<PS::MANTRA>(1);
+                queueMantra(1);
                 break;
 
             case R::DATA_DISK:
                 p.buff<PS::FOCUS>(1);
                 break;
 
-            case R::DU_VU_DOLL:
-                p.buff<PS::STRENGTH>(r.data);
+            case R::DU_VU_DOLL: {
+                int curses = 0;
+                for (const auto &c : gc.deck.cards) {
+                    if (c.getType() == CardType::CURSE) {
+                        ++curses;
+                    }
+                }
+                p.buff<PS::STRENGTH>(curses);
                 break;
+            }
 
             case R::FOSSILIZED_HELIX:
                 p.buff<PS::BUFFER>(1);
@@ -285,22 +324,19 @@ void BattleContext::initRelics(const GameContext &gc) {
                 p.gainEnergy(1);
                 break;
 
-            case R::MUTAGENIC_STRENGTH: // this appears to be applied before clockwork if it was acquired first
-                p.buff<PS::STRENGTH>(3);
-                p.debuff<PS::LOSE_STRENGTH>(3);
-                break;
-
             case R::NEOWS_LAMENT: // remember to decrement somewhere else
                 if (r.data > 0) {
                     for (int i = 0; i < monsters.monsterCount; ++i) {
                         Monster &m = monsters.arr[i];
+                        if (m.idx == -1) continue;  // FIX: reserved (not yet spawned) slots are not monsters; giving them
+                                                    // 1 HP made them targetable and "killable" (monstersAlive went negative)
                         m.curHp = 1;
                     }
                 }
                 break;
 
             case R::NUCLEAR_BATTERY:
-                p.channelOrb(Orb::FUSION);
+                p.channelOrb(*this, Orb::PLASMA);
                 break;
 
             case R::ODDLY_SMOOTH_STONE:
@@ -308,13 +344,13 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::PANTOGRAPH:
-                if (room == Room::BOSS) {
+                if (bossMonster) {
                     p.heal(25);
                 }
                 break;
 
             case R::PRESERVED_INSECT:
-                if (room == Room::ELITE) {
+                if (eliteTrigger) {
                     for (int i = 0; i < monsters.monsterCount; ++i) {
                         Monster &m = monsters.arr[i];
                         m.curHp = static_cast<int>(m.maxHp * .75);
@@ -332,19 +368,19 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::SLAVERS_COLLAR:
-                if (room == Room::ELITE || room == Room::BOSS) { // todo this needs to be set by eliteTrigger maybe?
+                if (eliteTrigger || bossMonster) {
                     p.energyPerTurn++;
                 }
                 break;
 
             case R::SLING_OF_COURAGE:
-                if (room == Room::ELITE) {
+                if (eliteTrigger) {
                     p.buff<PS::STRENGTH>(2);
                 }
                 break;
 
             case R::SYMBIOTIC_VIRUS:
-                p.channelOrb(Orb::DARK);
+                p.channelOrb(*this, Orb::DARK);
                 break;
 
             case R::TEARDROP_LOCKET:
@@ -365,6 +401,18 @@ void BattleContext::initRelics(const GameContext &gc) {
     }
 
     // todo maybe move this to proper place -nvm drawCards is added below this
+    // Both of these go on top of the queue at battle start, so the later relic acts first. If Clockwork Souvenir came after
+    // Mutagenic Strength, its Artifact stops the Strength from wearing off. Gremlin Visage's Weak waits at the bottom of the
+    // queue, so the Artifact can stop that too. Snecko Eye's Confused comes before all this, and Artifact doesn't see it.
+    for (auto r = gc.relics.relics.rbegin(); r != gc.relics.relics.rend(); ++r) {
+        if (r->id == R::CLOCKWORK_SOUVENIR) {
+            p.buff<PS::ARTIFACT>(1);
+        } else if (r->id == R::MUTAGENIC_STRENGTH) {
+            p.debuff<PS::LOSE_STRENGTH>(3);
+            p.buff<PS::STRENGTH>(3);
+        }
+    }
+
     for (auto r : atBattleStartPreDraw) {
         switch (r) {
             case R::HOLY_WATER:
@@ -400,12 +448,8 @@ void BattleContext::initRelics(const GameContext &gc) {
                 addToBot( Actions::DrawCards(2) );
                 break;
 
-            case R::CLOCKWORK_SOUVENIR:
-                addToBot( Actions::BuffPlayer<PS::ARTIFACT>(1) );
-                break;
-
             case R::GREMLIN_VISAGE:
-                p.debuff<PS::WEAK>(1);
+                p.debuff<PS::WEAK>(1, false);
                 break;
 
             case R::MARK_OF_PAIN:
@@ -413,7 +457,7 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::RED_MASK:
-                addToBot( Actions::DebuffAllEnemy<MS::WEAK>(1) );
+                addToBot( Actions::DebuffAllEnemy<MS::WEAK>(1, false) );
                 break;
 
             case R::RING_OF_THE_SNAKE:
@@ -433,8 +477,9 @@ void BattleContext::initRelics(const GameContext &gc) {
         addToBot( Actions::DamageAllEnemy(3) );
     }
 
-    if (gc.hasRelic(R::RED_SKULL) && gc.curHp <= gc.maxHp / 2) {
+    if (gc.hasRelic(R::RED_SKULL) && p.curHp <= p.maxHp / 2) { // after Blood Vial's heal
         p.buff<PS::STRENGTH>(3);
+        p.redSkullActive = true;
     }
 
     for (auto r : atTurnStartPostDraw) {
@@ -452,8 +497,13 @@ void BattleContext::initRelics(const GameContext &gc) {
         }
     }
 
-    // ** OnStartOfTurn ** ORBS todo
-    //RelicCables -> OnStartOfTurn again for orb 0
+    // applyStartOfTurnOrbs: orbs channeled in atPreBattle are there for the first turn, so Nuclear Battery's Plasma gives energy.
+    for (int i = 0; i < p.orbSlots; ++i) {
+        p.orbOnStartOfTurn(*this, i);
+    }
+    if (p.hasRelic<R::GOLD_PLATED_CABLES>() && p.hasOrb()) {
+        p.orbOnStartOfTurn(*this, 0);
+    }
 }
 
 void BattleContext::exitBattle(GameContext &g) const {
@@ -478,10 +528,12 @@ void BattleContext::exitBattle(GameContext &g) const {
     g.monsterHpRng = monsterHpRng;
     g.potionRng = potionRng;
     g.shuffleRng = shuffleRng;
+    g.cardRng = cardRng;
 
     g.curHp = player.curHp;
     g.maxHp = player.maxHp;
     g.gold = player.gold;
+    g.powersPlayedLastCombat = player.powersPlayedThisCombat;
 
 
     // todo lesson learned bitset
@@ -491,24 +543,33 @@ void BattleContext::exitBattle(GameContext &g) const {
 
     // cards
     updateCardsOnExit(g.deck);
+    for (const auto deckIdx : lessonLearnedUpgrades) {
+        g.deck.upgrade(deckIdx);
+    }
 
     g.info.stolenGold = 0;
-    if (requiresStolenGoldCheck()) {
-        for (int i = 0; i < monsters.monsterCount; ++i) {
-            const auto &m = monsters.arr[i];
-
-            const bool canHaveStolenGold = m.id == MonsterId::LOOTER || m.id == MonsterId::MUGGER;
-            const bool escaped = m.curHp > 0 && (m.moveHistory[0] == MMID::LOOTER_ESCAPE ||
-                                                 m.moveHistory[0] == MMID::MUGGER_ESCAPE);
-
-            if (canHaveStolenGold && !escaped) {
-                g.info.stolenGold += m.miscInfo;
-            }
+    g.info.allMonstersEscaped = monsters.monsterCount > 0;
+    for (int i = 0; i < monsters.monsterCount; ++i) {
+        const auto &m = monsters.arr[i];
+        if (m.id == MonsterId::INVALID) {
+            continue;
         }
+
+        const bool canHaveStolenGold = m.id == MonsterId::LOOTER || m.id == MonsterId::MUGGER;
+        const bool escaped = m.curHp > 0 && (m.moveHistory[0] == MMID::LOOTER_ESCAPE ||
+                                             m.moveHistory[0] == MMID::MUGGER_ESCAPE);
+
+        if (requiresStolenGoldCheck() && canHaveStolenGold && !escaped) {
+            g.info.stolenGold += m.miscInfo;
+        }
+        // Not tied to the stolen gold check: a thief that stole nothing (no gold to take) can still escape.
+        g.info.allMonstersEscaped = g.info.allMonstersEscaped && canHaveStolenGold && escaped;
     }
 
     if (outcome == Outcome::PLAYER_LOSS) {
         g.outcome = GameOutcome::PLAYER_LOSS;
+    } else if (miscBits.test(1)) {
+        g.afterEscape();  // Smoke Bomb: straight back to the map, no rewards
     } else {
         // player victory
         g.regainControl();
@@ -519,8 +580,18 @@ void BattleContext::exitBattle(GameContext &g) const {
 }
 
 void BattleContext::updateRelicsOnExit(GameContext &g) const {
+    // Victory relics heal while the room's phase is still COMBAT, so Magic Flower counts.
+    const auto victoryHeal = [&g](int amount) { return g.hasRelic(RelicId::MAGIC_FLOWER) ? (amount * 3 + 1) / 2 : amount; };
+    // AbstractRoom.endBattle triggers it ahead of every other relic's onVictory, so Burning Blood can't lift the HP past half first.
+    if (outcome == Outcome::PLAYER_VICTORY && g.hasRelic(RelicId::MEAT_ON_THE_BONE) && g.curHp <= g.maxHp / 2) {
+        g.playerHeal(victoryHeal(12));
+    }
     for (auto &r : g.relics.relics) {
         switch (r.id) {
+            case RelicId::ANCIENT_TEA_SET:
+                r.data = 0;
+                break;
+
             case RelicId::HAPPY_FLOWER:
                 r.data = player.happyFlowerCounter;
                 break;
@@ -568,19 +639,13 @@ void BattleContext::updateRelicsOnExit(GameContext &g) const {
 
             case RelicId::BURNING_BLOOD:
                 if (outcome == Outcome::PLAYER_VICTORY) {
-                    g.playerHeal(6);
+                    g.playerHeal(victoryHeal(6));
                 }
                 break;
 
             case RelicId::BLACK_BLOOD:
                 if (outcome == Outcome::PLAYER_VICTORY) {
-                    g.playerHeal(12);
-                }
-                break;
-
-            case RelicId::MEAT_ON_THE_BONE:
-                if (outcome == Outcome::PLAYER_VICTORY && g.curHp <= g.maxHp / 2) {
-                    g.playerHeal(12);
+                    g.playerHeal(victoryHeal(12));
                 }
                 break;
 
@@ -588,6 +653,11 @@ void BattleContext::updateRelicsOnExit(GameContext &g) const {
                 break;
         }
 
+    }
+
+    // AbstractPlayer.onVictory goes through the relics and then the powers.
+    if (outcome == Outcome::PLAYER_VICTORY && player.hasStatus<PS::SELF_REPAIR>()) {
+        g.playerHeal(victoryHeal(player.getStatus<PS::SELF_REPAIR>()));
     }
 }
 
@@ -604,10 +674,10 @@ void cardOnExit(const CardInstance &c, Deck &deck) {
         deckCard.misc = c.specialData;
     }
 
-    // todo
-//    if (c.getId() == CardId::GENETIC_ALGORITHM) {
-//        deckCard.misc = c.specialData;
-//    }
+    // IncreaseMiscAction also raises the deck's copy.
+    if (c.getId() == CardId::GENETIC_ALGORITHM) {
+        deckCard.misc = c.specialData;
+    }
 }
 
 void BattleContext::updateCardsOnExit(Deck &deck) const {
@@ -641,7 +711,7 @@ bool BattleContext::requiresStolenGoldCheck() const {
 }
 
 int BattleContext::getMonsterTurnNumber() const {
-    return turn+1; // todo;
+    return turn + 1 - monsterTurnsSkipped;
 }
 
 void BattleContext::setState(InputState s) {
@@ -656,6 +726,14 @@ void BattleContext::addToBot(const Action &a) {
     actionQueue.pushBack(a);
 }
 
+void BattleContext::addToTop(Action &&a) {  // PERF: move overload, no std::function copy
+    actionQueue.pushFront(std::move(a));
+}
+
+void BattleContext::addToBot(Action &&a) {  // PERF: move overload, no std::function copy
+    actionQueue.pushBack(std::move(a));
+}
+
 // todo remove or replace other method that does this
 void BattleContext::addToTopCard(CardQueueItem item) {
     cardQueue.pushFront(item);
@@ -666,7 +744,8 @@ void BattleContext::addToBotCard(CardQueueItem item) {
 }
 
 void BattleContext::checkCombat() {
-    if (outcome == Outcome::PLAYER_VICTORY) {
+    // a minion leader's death ends the fight, but its minions only die in actions to come, so the game keeps the queue
+    if (outcome == Outcome::PLAYER_VICTORY && monsters.areMonstersBasicallyDead()) {
         clearPostCombatActions();
     }
 }
@@ -767,9 +846,20 @@ void BattleContext::executeActions() {
         if (cards.cardsInHand + cards.discardPile.size() + cards.drawPile.size() == 0) {
             bool hasDamageWithoutCards = player.hasStatus<PS::OMEGA>() ||
                     player.hasStatus<PS::THORNS>() ||
+                    player.hasOrb() ||
+                    player.hasStatus<PS::HELLO_WORLD>() ||
+                    player.hasStatus<PS::CREATIVE_AI>() ||
+                    player.hasStatus<PS::INFINITE_BLADES>() ||
+                    player.hasStatus<PS::NOXIOUS_FUMES>() ||
+                    player.nightmareCount > 0 ||
                     player.bomb1 ||
                     player.bomb2 ||
                     player.bomb3;
+
+            // Poison still ticks with no cards left.
+            for (int i = 0; i < monsters.monsterCount && !hasDamageWithoutCards; ++i) {
+                hasDamageWithoutCards = monsters.arr[i].hasStatus<MS::POISON>();
+            }
 
             if (!hasDamageWithoutCards && monsters.arr[0].id != MonsterId::TRANSIENT) {
                 outcome = Outcome::PLAYER_LOSS;
@@ -816,6 +906,10 @@ void BattleContext::executeActions() {
 
             if (cards.cardsInHand == 0) {
                 drawCards(1);
+                // an empty draw pile only queues the shuffle and the draw; Evolve and the like queue theirs too
+                if (!actionQueue.isEmpty()) {
+                    continue;
+                }
             }
         }
 
@@ -845,7 +939,9 @@ void BattleContext::playCardQueueItem(CardQueueItem playItem) {
     }
 
 //    bool canPlayCard = false; // not really sure what this is used for
-    const bool canUseCard = item.purgeOnUse || (item.triggerOnUse && c.canUse(*this, item.target, item.autoplay) && (!c.requiresTarget() || monsters.arr[item.target].isTargetable()));
+    // Copies go through canUse too: only the energy check knows about autoplay, so Velvet Choker can stop a Double Tap copy.
+    const bool canUseCard = item.triggerOnUse && isCardPlayAllowed() && c.canUse(*this, item.target, item.autoplay)
+            && (!c.requiresTarget() || monsters.arr[item.target].isTargetable());
     if (canUseCard) { // not sure if this is correct,
 //        canPlayCard = true; // what is this for......
 
@@ -853,7 +949,7 @@ void BattleContext::playCardQueueItem(CardQueueItem playItem) {
             c.freeToPlayOnce = true;
         }
 
-        if (c.requiresTarget()) {
+        if (c.requiresTarget() && !item.autoplay) {
             player.lastTargetedMonster = item.target;
         }
 
@@ -865,6 +961,12 @@ void BattleContext::playCardQueueItem(CardQueueItem playItem) {
 
     if (!item.triggerOnUse) {
         useNoTriggerCard(); // for burn, decay, doubt, regret and shame,
+
+    } else if (!canUseCard && item.autoplay) {
+        // GameActionManager sends it straight to UseCardAction without triggers, so Havoc still exhausts it.
+        item.exhaustOnUse |= c.doesExhaust();
+        item.triggerOnUse = false;
+        addToBot(Actions::OnAfterCardUsed());
     }
 }
 
@@ -874,6 +976,7 @@ void BattleContext::useCard() {
 
     item.exhaustOnUse |= c.doesExhaust();
     ++player.cardsPlayedThisTurn;
+    noteCardTypePlayed(c.getType());
 
     switch (c.getType()) {
         case CardType::ATTACK:
@@ -904,6 +1007,14 @@ void BattleContext::useCard() {
             break;
     }
 
+    // ChokePower.onUseCard comes last in UseCardAction's constructor, with the other monster powers.
+    for (int i = 0; i < monsters.monsterCount; ++i) {
+        const auto &m = monsters.arr[i];
+        if (m.hasStatus<MS::CHOKED>() && !m.isDeadOrEscaped()) {
+            addToBot( Actions::MonsterLoseHp(i, m.getStatus<MS::CHOKED>()) );
+        }
+    }
+
     addToBot(Actions::OnAfterCardUsed());
     triggerOnOtherCardPlayed(c);
 
@@ -913,6 +1024,11 @@ void BattleContext::useCard() {
             player.useEnergy(c.costForTurn);
         }
     }
+}
+
+void BattleContext::noteCardTypePlayed(CardType type) {
+    player.previousCardTypePlayed = player.lastCardTypePlayed;
+    player.lastCardTypePlayed = type;
 }
 
 void BattleContext::useNoTriggerCard() {
@@ -974,7 +1090,7 @@ void BattleContext::useAttackCard() {
 
         case CardId::ANGER:
             addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 8 : 6)) );
-            addToBot( Actions::MakeTempCardInDiscard( CardInstance(CardId::ANGER, up), 1) );
+            addToBot( Actions::MakeTempCardInDiscard(c, 1) );  // makeStatEquivalentCopy keeps a changed cost
             break;
 
         case CardId::BASH:
@@ -1026,7 +1142,7 @@ void BattleContext::useAttackCard() {
         }
 
         case CardId::DROPKICK:
-            addToBot( Actions::DropkickAction(t) );
+            addToBot( Actions::DropkickAction(t, calculateCardDamage(c, t, up ? 8 : 5)) );
             break;
 
         case CardId::FEED:
@@ -1073,20 +1189,24 @@ void BattleContext::useAttackCard() {
         }
 
         case CardId::IRON_WAVE: {
-            addToBot( Actions::GainBlock(calculateCardBlock(calculateCardBlock(up  ? 7 : 5))) );
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 7 : 5)) );  // FIX: block modifiers were applied twice
             addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 7 : 5)) );
             break;
         }
 
         case CardId::MIND_BLAST: {
-            const auto damage = calculateCardDamage(c, t, static_cast<int>(cards.drawPile.size()));
+            // PlayTopCardAction runs applyPowers as it takes the card, while the cards after it are still in the pile
+            const bool offTheTop = curCardQueueItem.autoplay && c.specialData > 0;
+            const auto baseDamage = offTheTop ? c.specialData - 1 : static_cast<int>(cards.drawPile.size());
+            const auto damage = calculateCardDamage(c, t, baseDamage);
             addToBot( Actions::AttackEnemy(t, damage) );
             break;
         }
 
         case CardId::PERFECTED_STRIKE: {
             // hack because we calculate strikeCount while non purge cards are still in hand.
-            const int strikeDmg = cards.strikeCount * (up ? 3 : 2);
+            // A card played off the top of the draw pile is in limbo in the game, where countCards doesn't look.
+            const int strikeDmg = (cards.strikeCount - (item.autoplay && !item.purgeOnUse ? 1 : 0)) * (up ? 3 : 2);
             const int baseDamage = 6 + strikeDmg;
             addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, baseDamage)) );
             break;
@@ -1190,6 +1310,411 @@ void BattleContext::useAttackCard() {
             break;
 
 
+        // ************************* Defect, ported from Attemory/sts_lightspeed and checked against the game *************************
+
+        case CardId::ALL_FOR_ONE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 14 : 10)) );
+            addToBot( Actions::AllCostToHandAction(0) );
+            break;
+
+        case CardId::BALL_LIGHTNING:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 10 : 7)) );
+            addToBot( Actions::ChannelOrb(Orb::LIGHTNING) );
+            break;
+
+        case CardId::BARRAGE:
+            addToBot( Actions::BarrageAction(t, calculateCardDamage(c, t, up ? 6 : 4)) );
+            break;
+
+        case CardId::BEAM_CELL:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 4 : 3)) );
+            addToBot( Actions::DebuffEnemy<MS::VULNERABLE>(t, up ? 2 : 1, false) );
+            break;
+
+        case CardId::BLIZZARD:
+            addToBot( Actions::AttackAllEnemy((up ? 3 : 2) * player.frostChanneled + player.getStatus<PS::VIGOR>()) );
+            break;
+
+        case CardId::BULLSEYE: // the game's Lock-On
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 11 : 8)) );
+            addToBot( Actions::DebuffEnemy<MS::LOCK_ON>(t, up ? 3 : 2, false) );
+            break;
+
+        case CardId::CLAW:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, (up ? 5 : 3) + c.specialData)) );
+            addToBot( Actions::GashAction(2) );
+            break;
+
+        case CardId::COLD_SNAP:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 9 : 6)) );
+            addToBot( Actions::ChannelOrb(Orb::FROST) );
+            break;
+
+        case CardId::COMPILE_DRIVER:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 10 : 7)) );
+            addToBot( Actions::CompileDriverAction(1) );
+            break;
+
+        case CardId::CORE_SURGE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 15 : 11)) );
+            addToBot( Actions::BuffPlayer<PS::ARTIFACT>(1) );
+            break;
+
+        case CardId::DOOM_AND_GLOOM:
+            addToBot( Actions::AttackAllEnemy((up ? 14 : 10) + player.getStatus<PS::VIGOR>()) );
+            addToBot( Actions::ChannelOrb(Orb::DARK) );
+            break;
+
+        case CardId::FTL:
+            addToBot( Actions::FtlAction(t, calculateCardDamage(c, t, up ? 6 : 5), up ? 4 : 3) );
+            break;
+
+        case CardId::GO_FOR_THE_EYES:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 4 : 3)) );
+            addToBot( Actions::ForTheEyesAction(t, up ? 2 : 1) );
+            break;
+
+        case CardId::HYPERBEAM:
+            addToBot( Actions::AttackAllEnemy((up ? 34 : 26) + player.getStatus<PS::VIGOR>()) );
+            addToBot( Actions::DebuffPlayer<PS::FOCUS>(-3, false) );
+            break;
+
+        case CardId::MELTER:
+            addToBot( Actions::RemoveAllBlock(t) );
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 14 : 10)) );
+            break;
+
+        case CardId::METEOR_STRIKE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 30 : 24)) );
+            addToBot( Actions::ChannelOrbs(Orb::PLASMA, 3) );
+            break;
+
+        case CardId::REBOUND:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 12 : 9)) );
+            addToBot( Actions::BuffPlayer<PS::REBOUND>(1) );
+            break;
+
+        case CardId::RIP_AND_TEAR:
+            addToBot( Actions::AttackRandomEnemy((up ? 9 : 7) + player.getStatus<PS::VIGOR>(), 2) );
+            break;
+
+        case CardId::SCRAPE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 10 : 7)) );
+            addToBot( Actions::ScrapeAction(up ? 5 : 4) );
+            break;
+
+        case CardId::STREAMLINE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 20 : 15)) );
+            addToBot( Actions::ReduceCostAction(c.getUniqueId()) );
+            break;
+
+        case CardId::SUNDER:
+            addToBot( Actions::SunderAction(t, calculateCardDamage(c, t, up ? 32 : 24), 3) );
+            break;
+
+        case CardId::SWEEPING_BEAM:
+            addToBot( Actions::AttackAllEnemy((up ? 9 : 6) + player.getStatus<PS::VIGOR>()) );
+            addToBot( Actions::DrawCards(1) );
+            break;
+
+        case CardId::THUNDER_STRIKE:
+            addToBot( Actions::AttackRandomEnemy((up ? 9 : 7) + player.getStatus<PS::VIGOR>(), player.lightningChanneled) );
+            break;
+
+        // ************************* Silent, ported with hewzhew/SpireSim as a reference and checked against the game *************************
+
+        case CardId::ALL_OUT_ATTACK:
+            addToBot( Actions::AttackAllEnemy(calculateMultiDamage(c, up ? 14 : 10)) );
+            addToBot( Actions::DiscardAction(1, true) );
+            break;
+
+        case CardId::BACKSTAB:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 15 : 11)) );
+            break;
+
+        case CardId::BANE: {
+            const int damage = calculateCardDamage(c, t, up ? 10 : 7);
+            addToBot( Actions::AttackEnemy(t, damage) );
+            addToBot( Actions::BaneAction(t, damage) );
+            break;
+        }
+
+        case CardId::CHOKE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, 12)) );
+            addToBot( Actions::DebuffEnemy<MS::CHOKED>(t, up ? 5 : 3, false) );
+            break;
+
+        case CardId::DAGGER_SPRAY: { // both hits use the damage worked out when it's played
+            const auto damage = calculateMultiDamage(c, up ? 6 : 4);
+            addToBot( Actions::AttackAllEnemy(damage) );
+            addToBot( Actions::AttackAllEnemy(damage) );
+            break;
+        }
+
+        case CardId::DAGGER_THROW:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 12 : 9)) );
+            addToBot( Actions::DrawCards(1) );
+            addToBot( Actions::DiscardAction(1) );
+            break;
+
+        case CardId::DASH:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 13 : 10)) );
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 13 : 10)) );
+            break;
+
+        case CardId::DIE_DIE_DIE:
+            addToBot( Actions::AttackAllEnemy(calculateMultiDamage(c, up ? 17 : 13)) );
+            break;
+
+        case CardId::ENDLESS_AGONY:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 6 : 4)) );
+            break;
+
+        case CardId::EVISCERATE: {
+            const int damage = calculateCardDamage(c, t, up ? 9 : 7);
+            for (int i = 0; i < 3; ++i) {
+                addToBot( Actions::AttackEnemy(t, damage) );
+            }
+            break;
+        }
+
+        case CardId::FINISHER:
+            addToBot( Actions::FinisherAction(t, calculateCardDamage(c, t, up ? 8 : 6)) );
+            break;
+
+        case CardId::FLECHETTES:
+            addToBot( Actions::FlechetteAction(t, calculateCardDamage(c, t, up ? 6 : 4)) );
+            break;
+
+        case CardId::FLYING_KNEE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 11 : 8)) );
+            addToBot( Actions::BuffPlayer<PS::ENERGIZED>(1) );
+            break;
+
+        case CardId::GLASS_KNIFE: {
+            const int damage = calculateCardDamage(c, t, (up ? 12 : 8) - c.specialData);
+            addToBot( Actions::AttackEnemy(t, damage) );
+            addToBot( Actions::AttackEnemy(t, damage) );
+            addToBot( Actions::GlassKnifeAction(c.getUniqueId()) );
+            break;
+        }
+
+        case CardId::GRAND_FINALE:
+            addToBot( Actions::AttackAllEnemy(calculateMultiDamage(c, up ? 60 : 50)) );
+            break;
+
+        case CardId::HEEL_HOOK:
+            addToBot( Actions::HeelHookAction(t, calculateCardDamage(c, t, up ? 8 : 5)) );
+            break;
+
+        case CardId::MASTERFUL_STAB:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 16 : 12)) );
+            break;
+
+        case CardId::NEUTRALIZE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 4 : 3)) );
+            addToBot( Actions::DebuffEnemy<MS::WEAK>(t, up ? 2 : 1, false) );
+            break;
+
+        case CardId::POISONED_STAB:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 8 : 6)) );
+            addToBot( Actions::DebuffEnemy<MS::POISON>(t, up ? 4 : 3) );
+            break;
+
+        case CardId::PREDATOR:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 20 : 15)) );
+            addToBot( Actions::BuffPlayer<PS::DRAW_CARD_NEXT_TURN>(2) );
+            break;
+
+        case CardId::QUICK_SLASH:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 12 : 8)) );
+            addToBot( Actions::DrawCards(1) );
+            break;
+
+        case CardId::RIDDLE_WITH_HOLES: {
+            const int damage = calculateCardDamage(c, t, up ? 4 : 3);
+            for (int i = 0; i < 5; ++i) {
+                addToBot( Actions::AttackEnemy(t, damage) );
+            }
+            break;
+        }
+
+        case CardId::SHIV: // Accuracy writes this into the card's baseDamage, wherever the card is
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, (up ? 6 : 4) + player.getStatus<PS::ACCURACY>())) );
+            break;
+
+        case CardId::SKEWER:
+            if (!item.ignoreEnergyTotal && player.energy < item.energyOnUse) {
+                item.energyOnUse = player.energy;
+            }
+            addToBot( Actions::SkewerAction(t, calculateCardDamage(c, t, up ? 10 : 7), item.energyOnUse,
+                                            !(item.autoplay || item.freeToPlay || c.freeToPlayOnce)) );
+            break;
+
+        case CardId::SLICE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 9 : 6)) );
+            break;
+
+        case CardId::SNEAKY_STRIKE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 16 : 12)) );
+            addToBot( Actions::GainEnergyIfDiscard(2) );
+            break;
+
+        case CardId::SUCKER_PUNCH:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 9 : 7)) );
+            addToBot( Actions::DebuffEnemy<MS::WEAK>(t, up ? 2 : 1, false) );
+            break;
+
+        case CardId::UNLOAD:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 18 : 14)) );
+            addToBot( Actions::UnloadAction() );
+            break;
+
+        // ************************* Watcher, ported with hewzhew/SpireSim as a reference and checked against the game *************************
+
+        case CardId::BOWLING_BASH: { // one hit for each monster alive when it's played
+            int alive = 0;
+            for (int i = 0; i < monsters.monsterCount; ++i) {
+                if (!monsters.arr[i].isDeadOrEscaped()) {
+                    ++alive;
+                }
+            }
+            addToBot( Actions::AttackEnemyTimes(t, calculateCardDamage(c, t, up ? 10 : 7), alive) );
+            break;
+        }
+
+        case CardId::BRILLIANCE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, (up ? 16 : 12) + player.mantraGained)) );
+            break;
+
+        case CardId::CARVE_REALITY:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 10 : 6)) );
+            addToBot( Actions::MakeTempCardInHand(CardId::SMITE) );
+            break;
+
+        case CardId::CONCLUDE:
+            addToBot( Actions::AttackAllEnemy(calculateMultiDamage(c, up ? 16 : 12)) );
+            addToBot( Actions::PressEndTurnButton() );
+            break;
+
+        case CardId::CONSECRATE:
+            addToBot( Actions::AttackAllEnemy(calculateMultiDamage(c, up ? 8 : 5)) );
+            break;
+
+        case CardId::CRUSH_JOINTS:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 10 : 8)) );
+            addToBot( Actions::CrushJointsAction(t, up ? 2 : 1) );
+            break;
+
+        case CardId::CUT_THROUGH_FATE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 9 : 7)) );
+            addToBot( Actions::ScryAction(up ? 3 : 2) );
+            addToBot( Actions::DrawCards(1) );
+            break;
+
+        case CardId::EMPTY_FIST:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 14 : 9)) );
+            addToBot( Actions::ChangeStance(Stance::NEUTRAL) );
+            break;
+
+        case CardId::ERUPTION:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, 9)) );
+            addToBot( Actions::ChangeStance(Stance::WRATH) );
+            break;
+
+        case CardId::EXPUNGER:
+            addToBot( Actions::AttackEnemyTimes(t, calculateCardDamage(c, t, up ? 15 : 9), c.specialData) );
+            break;
+
+        case CardId::FEAR_NO_EVIL:
+            addToBot( Actions::FearNoEvilAction(t, calculateCardDamage(c, t, up ? 11 : 8)) );
+            break;
+
+        case CardId::FLURRY_OF_BLOWS:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 6 : 4)) );
+            break;
+
+        case CardId::FLYING_SLEEVES: {
+            const int damage = calculateCardDamage(c, t, up ? 6 : 4);
+            addToBot( Actions::AttackEnemy(t, damage) );
+            addToBot( Actions::AttackEnemy(t, damage) );
+            break;
+        }
+
+        case CardId::FOLLOW_UP:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 11 : 7)) );
+            addToBot( Actions::FollowUpAction() );
+            break;
+
+        case CardId::JUST_LUCKY:
+            addToBot( Actions::ScryAction(up ? 2 : 1) );
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 3 : 2)) );
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 4 : 3)) );
+            break;
+
+        case CardId::LESSON_LEARNED:
+            addToBot( Actions::LessonLearnedAction(t, calculateCardDamage(c, t, up ? 13 : 10)) );
+            break;
+
+        case CardId::RAGNAROK: // AttackDamageRandomEnemyAction works its damage out when it runs, with Vigor still there
+            addToBot( Actions::AttackRandomEnemy((up ? 6 : 5) + player.getStatus<PS::VIGOR>(), up ? 6 : 5) );
+            break;
+
+        case CardId::REACH_HEAVEN:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 15 : 10)) );
+            addToBot( Actions::MakeTempCardInDrawPile(CardInstance(CardId::THROUGH_VIOLENCE), 1, true) );
+            break;
+
+        case CardId::SANDS_OF_TIME:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 26 : 20)) );
+            break;
+
+        case CardId::SASH_WHIP:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 10 : 8)) );
+            addToBot( Actions::HeadStompAction(t, up ? 2 : 1) );
+            break;
+
+        case CardId::SIGNATURE_MOVE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 40 : 30)) );
+            break;
+
+        case CardId::SMITE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 16 : 12)) );
+            break;
+
+        case CardId::TALK_TO_THE_HAND:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 7 : 5)) );
+            addToBot( Actions::DebuffEnemy<MS::BLOCK_RETURN>(t, up ? 3 : 2, false) );
+            break;
+
+        case CardId::TANTRUM: {
+            const int damage = calculateCardDamage(c, t, 3);
+            addToBot( Actions::AttackEnemyTimes(t, damage, up ? 4 : 3) );
+            addToBot( Actions::ChangeStance(Stance::WRATH) );
+            break;
+        }
+
+        case CardId::THROUGH_VIOLENCE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 30 : 20)) );
+            break;
+
+        case CardId::WALLOP:
+            addToBot( Actions::WallopAction(t, calculateCardDamage(c, t, up ? 12 : 9)) );
+            break;
+
+        case CardId::WEAVE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 6 : 4)) );
+            break;
+
+        case CardId::WHEEL_KICK:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, up ? 20 : 15)) );
+            addToBot( Actions::DrawCards(2) );
+            break;
+
+        case CardId::WINDMILL_STRIKE:
+            addToBot( Actions::AttackEnemy(t, calculateCardDamage(c, t, (up ? 10 : 7) + c.specialData)) );
+            break;
+
         default:
 #ifdef sts_asserts
             std::cerr << "attempted to use unimplemented card: " << c.getName() << std::endl;
@@ -1263,8 +1788,8 @@ void BattleContext::useSkillCard() {
             break;
 
         case CardId::DARK_SHACKLES:
-            addToBot( Actions::DebuffEnemy<MS::STRENGTH>(t, up ? 15 : 9) );
-            if (monsters.arr[t].hasStatus<MS::ARTIFACT>()) {
+            addToBot( Actions::DebuffEnemy<MS::STRENGTH>(t, up ? -15 : -9, false) );  // FIX: sign was positive (gave strength)
+            if (!monsters.arr[t].hasStatus<MS::ARTIFACT>()) {  // FIX: condition was inverted (real game: GainStrengthPower only if no Artifact)
                 addToBot( Actions::BuffEnemy<MS::SHACKLED>(t, up ? 15 : 9) );
             }
             break;
@@ -1279,7 +1804,7 @@ void BattleContext::useSkillCard() {
             break;
 
         case CardId::DISARM:
-            addToBot( Actions::DebuffEnemy<MS::STRENGTH>(t, -2, false) );
+            addToBot( Actions::DebuffEnemy<MS::STRENGTH>(t, up ? -3 : -2, false) );  // FIX: upgrade value
             break;
 
         case CardId::DISCOVERY:
@@ -1342,7 +1867,7 @@ void BattleContext::useSkillCard() {
             bool hasAttack = false;
             for (int i = 0; i < cards.cardsInHand; ++i) {
                 if (cards.hand[i].getType() == CardType::ATTACK) {
-                    hasAttack = false;
+                    hasAttack = true;  // FIX: was `false` -> card always drew
                     break;
                 }
             }
@@ -1364,8 +1889,11 @@ void BattleContext::useSkillCard() {
             addToBot( Actions::DebuffAllEnemy<MS::WEAK>(up ? 2 : 1, false) ); // game justs adds one for each enemy in order
             break;
 
-        case CardId::JACK_OF_ALL_TRADES: // the game decides the random cards here and adds maketempcardtobot
-            addToBot( Actions::JackOfAllTradesAction(up) );
+        case CardId::JACK_OF_ALL_TRADES: // the game decides the random cards here and adds a MakeTempCard for each
+            addToBot( Actions::MakeTempCardInHand(getTrulyRandomColorlessCardInCombat(cardRandomRng)) );
+            if (up) {
+                addToBot( Actions::MakeTempCardInHand(getTrulyRandomColorlessCardInCombat(cardRandomRng)) );
+            }
             break;
 
         case CardId::JAX:
@@ -1497,6 +2025,575 @@ void BattleContext::useSkillCard() {
             addToBot( Actions::WarcryAction() );
             break;
 
+        // ************************* Defect, ported from Attemory/sts_lightspeed and checked against the game *************************
+
+        case CardId::AGGREGATE: {
+            const int divide = up ? 3 : 4;
+            addToBot( {[=] (BattleContext &bc) {
+                bc.player.gainEnergy(static_cast<int>(bc.cards.drawPile.size()) / divide);
+            }} );
+            break;
+        }
+
+        case CardId::AMPLIFY:
+            addToBot( Actions::BuffPlayer<PS::AMPLIFY>(up ? 2 : 1) );
+            break;
+
+        case CardId::AUTO_SHIELDS:
+            if (player.block == 0) { // checked when played, not when the action runs
+                addToBot( Actions::GainBlock(calculateCardBlock(up ? 15 : 11)) );
+            }
+            break;
+
+        case CardId::BOOT_SEQUENCE:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 13 : 10)) );
+            break;
+
+        case CardId::CHAOS: { // AbstractOrb.getRandomOrb, rolled when the card is played
+            static constexpr Orb orbList[] {Orb::DARK, Orb::FROST, Orb::LIGHTNING, Orb::PLASMA};
+            if (up) {
+                addToBot( Actions::ChannelOrb(orbList[cardRandomRng.random(3)]) );
+            }
+            addToBot( Actions::ChannelOrb(orbList[cardRandomRng.random(3)]) );
+            break;
+        }
+
+        case CardId::CHARGE_BATTERY: // the game's Conserve Battery
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 10 : 7)) );
+            addToBot( Actions::BuffPlayer<PS::ENERGIZED_BLUE>(1) );
+            break;
+
+        case CardId::CHILL:
+            for (int i = 0; i < monsters.monsterCount; ++i) {
+                if (!monsters.arr[i].isDeadOrEscaped()) {
+                    addToBot( Actions::ChannelOrb(Orb::FROST) );
+                }
+            }
+            break;
+
+        case CardId::CONSUME:
+            addToBot( Actions::BuffPlayer<PS::FOCUS>(up ? 3 : 2) );
+            addToBot( Actions::DecreaseOrbSlots(1) );
+            break;
+
+        case CardId::COOLHEADED:
+            addToBot( Actions::ChannelOrb(Orb::FROST) );
+            addToBot( Actions::DrawCards(up ? 2 : 1) );
+            break;
+
+        case CardId::DARKNESS:
+            addToBot( Actions::ChannelOrb(Orb::DARK) );
+            if (up) {
+                addToBot( Actions::DarkImpulseAction() );
+            }
+            break;
+
+        case CardId::DOUBLE_ENERGY:
+            addToBot( {[] (BattleContext &bc) {
+                bc.player.gainEnergy(bc.player.energy);
+            }} );
+            break;
+
+        case CardId::DUALCAST:
+            addToBot( Actions::EvokeWithoutRemovingOrb() );
+            addToBot( Actions::EvokeOrb() );
+            break;
+
+        case CardId::EQUILIBRIUM:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 16 : 13)) );
+            addToBot( Actions::BuffPlayer<PS::EQUILIBRIUM>(1) );
+            break;
+
+        case CardId::FISSION:
+            addToBot( Actions::FissionAction(up) );
+            break;
+
+        case CardId::FORCE_FIELD:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 16 : 12)) );
+            break;
+
+        case CardId::FUSION:
+            addToBot( Actions::ChannelOrb(Orb::PLASMA) );
+            break;
+
+        case CardId::GENETIC_ALGORITHM: // the block is taken from before the increase, which an upgrade makes 3
+            addToBot( Actions::IncreaseMiscAction(c.getUniqueId(), up ? 3 : 2) );
+            addToBot( Actions::GainBlock(calculateCardBlock(c.specialData)) );
+            break;
+
+        case CardId::GLACIER:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 10 : 7)) );
+            addToBot( Actions::ChannelOrbs(Orb::FROST, 2) );
+            break;
+
+        case CardId::HOLOGRAM:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 5 : 3)) );
+            addToBot( Actions::BetterDiscardPileToHandAction(1, CardSelectTask::HOLOGRAM) );
+            break;
+
+        case CardId::LEAP:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 12 : 9)) );
+            break;
+
+        case CardId::MULTI_CAST:
+            if (!item.ignoreEnergyTotal && player.energy < item.energyOnUse) {
+                item.energyOnUse = player.energy;
+            }
+            addToBot( Actions::MulticastAction(item.energyOnUse, up, !(item.autoplay || item.freeToPlay || c.freeToPlayOnce)) );
+            break;
+
+        case CardId::OVERCLOCK: // the game's Steam Power
+            addToBot( Actions::DrawCards(up ? 3 : 2) );
+            addToBot( Actions::MakeTempCardInDiscard(CardInstance(CardId::BURN)) );
+            break;
+
+        case CardId::RAINBOW:
+            addToBot( Actions::ChannelOrb(Orb::LIGHTNING) );
+            addToBot( Actions::ChannelOrb(Orb::FROST) );
+            addToBot( Actions::ChannelOrb(Orb::DARK) );
+            break;
+
+        case CardId::REBOOT:
+            onShuffle(); // ShuffleAllAction's constructor
+            addToBot( Actions::RebootShuffleAll() );
+            addToBot( Actions::ShuffleDrawPile() );
+            addToBot( Actions::DrawCards(up ? 6 : 4) );
+            break;
+
+        case CardId::RECURSION:
+            addToBot( Actions::RecursionAction() );
+            break;
+
+        case CardId::RECYCLE:
+            addToBot( Actions::RecycleAction() );
+            break;
+
+        case CardId::REINFORCED_BODY:
+            if (!item.ignoreEnergyTotal && player.energy < item.energyOnUse) {
+                item.energyOnUse = player.energy;
+            }
+            addToBot( Actions::ReinforcedBodyAction(calculateCardBlock(up ? 9 : 7), item.energyOnUse,
+                                                    !(item.autoplay || item.freeToPlay || c.freeToPlayOnce)) );
+            break;
+
+        case CardId::REPROGRAM:
+            addToBot( Actions::DebuffPlayer<PS::FOCUS>(up ? -2 : -1, false) );
+            addToBot( Actions::BuffPlayer<PS::STRENGTH>(up ? 2 : 1) );
+            addToBot( Actions::BuffPlayer<PS::DEXTERITY>(up ? 2 : 1) );
+            break;
+
+        case CardId::SEEK:
+            addToBot( Actions::SeekAction(up ? 2 : 1) );
+            break;
+
+        case CardId::SKIM:
+            addToBot( Actions::DrawCards(up ? 4 : 3) );
+            break;
+
+        case CardId::STACK: { // Stack.applyPowers works its base block out from the discard pile
+            // PlayTopCardAction runs applyPowers as it takes the card, before the cards taken ahead of it have been played.
+            // A copy keeps the original's base block, from before the original lands on the pile.
+            const bool baseIsSet = curCardQueueItem.autoplay && c.specialData > 0;
+            const int discarded = baseIsSet ? c.specialData - 1 : static_cast<int>(cards.discardPile.size());
+            addToBot( Actions::GainBlock(calculateCardBlock(discarded + (up ? 3 : 0))) );
+            break;
+        }
+
+        case CardId::STEAM_BARRIER: // ModifyBlockAction takes one from baseBlock, which can go below 0 and then Dexterity starts from there
+            addToBot( Actions::GainBlock(calculateCardBlock((up ? 8 : 6) - c.specialData)) );
+            addToBot( Actions::ModifyBlockAction(c.getUniqueId()) );
+            break;
+
+        case CardId::TEMPEST:
+            if (!item.ignoreEnergyTotal && player.energy < item.energyOnUse) {
+                item.energyOnUse = player.energy;
+            }
+            addToBot( Actions::TempestAction(item.energyOnUse, up, !(item.autoplay || item.freeToPlay || c.freeToPlayOnce)) );
+            break;
+
+        case CardId::TURBO:
+            addToBot( Actions::GainEnergy(up ? 3 : 2) );
+            addToBot( Actions::MakeTempCardInDiscard(CardInstance(CardId::VOID)) );
+            break;
+
+        case CardId::WHITE_NOISE: { // rolled when the card is played, from the class's own pool as for every card made in combat
+            CardInstance power(getTrulyRandomCardInCombat(cardRandomRng, player.cc, CardType::POWER));
+            power.setCostForTurn(0);
+            addToBot( Actions::MakeTempCardInHand(power) );
+            break;
+        }
+
+        case CardId::ZAP:
+            addToBot( Actions::ChannelOrb(Orb::LIGHTNING) );
+            break;
+
+        // ************************* Silent, ported with hewzhew/SpireSim as a reference and checked against the game *************************
+
+        case CardId::ACROBATICS:
+            addToBot( Actions::DrawCards(up ? 4 : 3) );
+            addToBot( Actions::DiscardAction(1) );
+            break;
+
+        case CardId::ADRENALINE:
+            addToBot( Actions::GainEnergy(up ? 2 : 1) );
+            addToBot( Actions::DrawCards(2) );
+            break;
+
+        case CardId::ALCHEMIZE: // rolled when the card is played
+            addToBot( Actions::ObtainPotion(returnRandomPotion(potionRng, player.cc, true)) );
+            break;
+
+        case CardId::BACKFLIP:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 8 : 5)) );
+            addToBot( Actions::DrawCards(2) );
+            break;
+
+        case CardId::BLADE_DANCE:
+            addToBot( Actions::MakeTempCardInHand(CardId::SHIV, false, up ? 4 : 3) );
+            break;
+
+        case CardId::BLUR:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 8 : 5)) );
+            addToBot( Actions::BuffPlayer<PS::BLUR>(1) );
+            break;
+
+        case CardId::BOUNCING_FLASK: // the first target is rolled when the card is played
+            addToBot( Actions::BouncingFlaskAction(monsters.getRandomMonsterIdx(cardRandomRng, true), 3, up ? 4 : 3) );
+            break;
+
+        case CardId::BULLET_TIME:
+            addToBot( Actions::DebuffPlayer<PS::NO_DRAW>(1, false) );
+            addToBot( Actions::BulletTimeAction() );
+            break;
+
+        case CardId::BURST:
+            addToBot( Actions::BuffPlayer<PS::BURST>(up ? 2 : 1) );
+            break;
+
+        case CardId::CALCULATED_GAMBLE:
+            addToBot( Actions::CalculatedGambleAction() );
+            break;
+
+        case CardId::CATALYST:
+            addToBot( Actions::CatalystAction(t, up ? 3 : 2) );
+            break;
+
+        case CardId::CLOAK_AND_DAGGER:
+            addToBot( Actions::GainBlock(calculateCardBlock(6)) );
+            addToBot( Actions::MakeTempCardInHand(CardId::SHIV, false, up ? 2 : 1) );
+            break;
+
+        case CardId::CONCENTRATE:
+            addToBot( Actions::DiscardAction(up ? 2 : 3) );
+            addToBot( Actions::GainEnergy(2) );
+            break;
+
+        case CardId::CORPSE_EXPLOSION:
+            addToBot( Actions::DebuffEnemy<MS::POISON>(t, up ? 9 : 6) );
+            addToBot( Actions::DebuffEnemy<MS::CORPSE_EXPLOSION>(t, 1) );
+            break;
+
+        case CardId::CRIPPLING_CLOUD: // the game's Crippling Poison
+            if (!monsters.areMonstersBasicallyDead()) {
+                for (int i = 0; i < monsters.monsterCount; ++i) {
+                    if (!monsters.arr[i].isDying()) {
+                        addToBot( Actions::DebuffEnemy<MS::POISON>(i, up ? 7 : 4) );
+                        addToBot( Actions::DebuffEnemy<MS::WEAK>(i, 2, false) );
+                    }
+                }
+            }
+            break;
+
+        case CardId::DEADLY_POISON:
+            addToBot( Actions::DebuffEnemy<MS::POISON>(t, up ? 7 : 5) );
+            break;
+
+        case CardId::DEFLECT:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 7 : 4)) );
+            break;
+
+        case CardId::DISTRACTION: { // rolled when the card is played, from the class's own pool as for every card made in combat
+            CardInstance skill(getTrulyRandomCardInCombat(cardRandomRng, player.cc, CardType::SKILL));
+            skill.setCostForTurn(0);
+            addToBot( Actions::MakeTempCardInHand(skill) );
+            break;
+        }
+
+        case CardId::DODGE_AND_ROLL: {
+            const int block = calculateCardBlock(up ? 6 : 4);
+            addToBot( Actions::GainBlock(block) );
+            addToBot( Actions::BuffPlayer<PS::NEXT_TURN_BLOCK>(block) );
+            break;
+        }
+
+        case CardId::DOPPELGANGER:
+            if (!item.ignoreEnergyTotal && player.energy < item.energyOnUse) {
+                item.energyOnUse = player.energy;
+            }
+            addToBot( Actions::DoppelgangerAction(item.energyOnUse, up, !(item.autoplay || item.freeToPlay || c.freeToPlayOnce)) );
+            break;
+
+        case CardId::ESCAPE_PLAN:
+            addToBot( Actions::EscapePlanDraw(calculateCardBlock(up ? 5 : 3)) );
+            break;
+
+        case CardId::EXPERTISE:
+            addToBot( Actions::ExpertiseAction(up ? 7 : 6) );
+            break;
+
+        case CardId::LEG_SWEEP:
+            addToBot( Actions::DebuffEnemy<MS::WEAK>(t, up ? 3 : 2, false) );
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 14 : 11)) );
+            break;
+
+        case CardId::MALAISE:
+            if (!item.ignoreEnergyTotal && player.energy < item.energyOnUse) {
+                item.energyOnUse = player.energy;
+            }
+            addToBot( Actions::MalaiseAction(t, item.energyOnUse, up, !(item.autoplay || item.freeToPlay || c.freeToPlayOnce)) );
+            break;
+
+        case CardId::NIGHTMARE:
+            addToBot( Actions::NightmareAction() );
+            break;
+
+        case CardId::OUTMANEUVER:
+            addToBot( Actions::BuffPlayer<PS::ENERGIZED>(up ? 3 : 2) );
+            break;
+
+        case CardId::PHANTASMAL_KILLER:
+            addToBot( Actions::BuffPlayer<PS::PHANTASMAL>(1) );
+            break;
+
+        case CardId::PIERCING_WAIL: { // Artifact is looked at when the card is played, before any of this has used it
+            const int amount = up ? 8 : 6;
+            for (int i = 0; i < monsters.monsterCount; ++i) {
+                addToBot( Actions::DebuffEnemy<MS::STRENGTH>(i, -amount, false) );
+            }
+            for (int i = 0; i < monsters.monsterCount; ++i) {
+                if (!monsters.arr[i].hasStatus<MS::ARTIFACT>()) {
+                    addToBot( Actions::BuffEnemy<MS::SHACKLED>(i, amount) );
+                }
+            }
+            break;
+        }
+
+        case CardId::PREPARED:
+            addToBot( Actions::DrawCards(up ? 2 : 1) );
+            addToBot( Actions::DiscardAction(up ? 2 : 1) );
+            break;
+
+        case CardId::REFLEX: // can't be played, but the game's use is there
+            addToBot( Actions::DrawCards(up ? 3 : 2) );
+            break;
+
+        case CardId::SETUP:
+            addToBot( Actions::SetupAction() );
+            break;
+
+        case CardId::STORM_OF_STEEL:
+            addToBot( Actions::StormOfSteelAction(up) );
+            break;
+
+        case CardId::SURVIVOR:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 11 : 8)) );
+            addToBot( Actions::DiscardAction(1) );
+            break;
+
+        case CardId::TACTICIAN: // can't be played, and its use is empty
+            break;
+
+        case CardId::TERROR:
+            addToBot( Actions::DebuffEnemy<MS::VULNERABLE>(t, 99, false) );
+            break;
+
+        // ************************* Watcher, ported with hewzhew/SpireSim as a reference and checked against the game *************************
+
+        case CardId::ALPHA:
+            addToBot( Actions::MakeTempCardInDrawPile(CardInstance(CardId::BETA), 1, true) );
+            break;
+
+        case CardId::BETA:
+            addToBot( Actions::MakeTempCardInDrawPile(CardInstance(CardId::OMEGA), 1, true) );
+            break;
+
+        case CardId::BLASPHEMY:
+            addToBot( Actions::ChangeStance(Stance::DIVINITY) );
+            addToBot( Actions::EndTurnDeathAction() );
+            break;
+
+        case CardId::COLLECT:
+            if (!item.ignoreEnergyTotal && player.energy < item.energyOnUse) {
+                item.energyOnUse = player.energy;
+            }
+            addToBot( Actions::CollectAction(item.energyOnUse + (up ? 1 : 0), !(item.autoplay || item.freeToPlay || c.freeToPlayOnce)) );
+            break;
+
+        case CardId::CONJURE_BLADE:
+            if (!item.ignoreEnergyTotal && player.energy < item.energyOnUse) {
+                item.energyOnUse = player.energy;
+            }
+            addToBot( Actions::ConjureBladeAction(item.energyOnUse + (up ? 1 : 0), !(item.autoplay || item.freeToPlay || c.freeToPlayOnce)) );
+            break;
+
+        case CardId::CRESCENDO:
+            addToBot( Actions::ChangeStance(Stance::WRATH) );
+            break;
+
+        case CardId::DECEIVE_REALITY:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 7 : 4)) );
+            addToBot( Actions::MakeTempCardInHand(CardId::SAFETY) );
+            break;
+
+        case CardId::DEUS_EX_MACHINA: // can't be played, and its use is empty
+            break;
+
+        case CardId::EMPTY_BODY:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 10 : 7)) );
+            addToBot( Actions::ChangeStance(Stance::NEUTRAL) );
+            break;
+
+        case CardId::EMPTY_MIND:
+            addToBot( Actions::DrawCards(up ? 3 : 2) );
+            addToBot( Actions::ChangeStance(Stance::NEUTRAL) );
+            break;
+
+        case CardId::EVALUATE:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 10 : 6)) );
+            addToBot( Actions::MakeTempCardInDrawPile(CardInstance(CardId::INSIGHT), 1, true) );
+            break;
+
+        case CardId::FOREIGN_INFLUENCE:
+            addToBot( Actions::ForeignInfluenceAction(up) );
+            break;
+
+        case CardId::HALT: { // Halt.applyPowers runs Dexterity and Frail on the two amounts apart
+            addToBot( Actions::HaltAction(calculateCardBlock(up ? 4 : 3), calculateCardBlock(up ? 14 : 9)) );
+            break;
+        }
+
+        case CardId::INDIGNATION:
+            addToBot( Actions::IndignationAction(up ? 5 : 3) );
+            break;
+
+        case CardId::INNER_PEACE:
+            addToBot( Actions::InnerPeaceAction(up ? 4 : 3) );
+            break;
+
+        case CardId::INSIGHT:
+            addToBot( Actions::DrawCards(up ? 3 : 2) );
+            break;
+
+        case CardId::JUDGMENT:
+            addToBot( Actions::JudgementAction(t, up ? 40 : 30) );
+            break;
+
+        case CardId::MEDITATE:
+            addToBot( Actions::MeditateAction(up ? 2 : 1) );
+            addToBot( Actions::ChangeStance(Stance::CALM) );
+            addToBot( Actions::PressEndTurnButton() );
+            break;
+
+        case CardId::MIRACLE:
+            addToBot( Actions::GainEnergy(up ? 2 : 1) );
+            break;
+
+        case CardId::OMNISCIENCE:
+            addToBot( Actions::OmniscienceAction(2) );
+            break;
+
+        case CardId::PERSEVERANCE:
+            addToBot( Actions::GainBlock(calculateCardBlock((up ? 7 : 5) + c.specialData)) );
+            break;
+
+        case CardId::PRAY:
+            queueMantra(up ? 4 : 3);
+            addToBot( Actions::MakeTempCardInDrawPile(CardInstance(CardId::INSIGHT), 1, true) );
+            break;
+
+        case CardId::PRESSURE_POINTS:
+            addToBot( Actions::DebuffEnemy<MS::MARK>(t, up ? 11 : 8, false) );
+            addToBot( Actions::TriggerMarksAction() );
+            break;
+
+        case CardId::PROSTRATE:
+            queueMantra(up ? 3 : 2);
+            addToBot( Actions::GainBlock(calculateCardBlock(4)) );
+            break;
+
+        case CardId::PROTECT:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 16 : 12)) );
+            break;
+
+        case CardId::SAFETY:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 16 : 12)) );
+            break;
+
+        case CardId::SANCTITY:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 9 : 6)) );
+            addToBot( Actions::SanctityAction(2) );
+            break;
+
+        case CardId::SCRAWL:
+            addToBot( Actions::ExpertiseAction(10) );
+            break;
+
+        case CardId::SIMMERING_FURY:
+            addToBot( Actions::BuffPlayer<PS::WRATH_NEXT_TURN>(1) );
+            addToBot( Actions::BuffPlayer<PS::DRAW_CARD_NEXT_TURN>(up ? 3 : 2) );
+            break;
+
+        case CardId::SPIRIT_SHIELD: { // every other card in hand. A copy's original has already left the hand.
+            int others = 0;
+            for (int i = 0; i < cards.cardsInHand; ++i) {
+                if (cards.hand[i].getUniqueId() != c.getUniqueId()) {
+                    ++others;
+                }
+            }
+            addToBot( Actions::GainBlock(calculateCardBlock(others * (up ? 4 : 3))) );
+            break;
+        }
+
+        case CardId::SWIVEL:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 11 : 8)) );
+            addToBot( Actions::BuffPlayer<PS::FREE_ATTACK_POWER>(1) );
+            break;
+
+        case CardId::THIRD_EYE:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 9 : 7)) );
+            addToBot( Actions::ScryAction(up ? 5 : 3) );
+            break;
+
+        case CardId::TRANQUILITY:
+            addToBot( Actions::ChangeStance(Stance::CALM) );
+            break;
+
+        case CardId::VAULT:
+            addToBot( Actions::SkipEnemiesTurn() );
+            addToBot( Actions::PressEndTurnButton() );
+            break;
+
+        case CardId::VIGILANCE:
+            addToBot( Actions::GainBlock(calculateCardBlock(up ? 12 : 8)) );
+            addToBot( Actions::ChangeStance(Stance::CALM) );
+            break;
+
+        case CardId::WAVE_OF_THE_HAND:
+            addToBot( Actions::BuffPlayer<PS::WAVE_OF_THE_HAND>(up ? 2 : 1) );
+            break;
+
+        case CardId::WISH:
+            addToBot( Actions::WishAction(up) );
+            break;
+
+        case CardId::WORSHIP:
+            queueMantra(5);
+            break;
+
+        case CardId::WREATH_OF_FLAME:
+            addToBot( Actions::BuffPlayer<PS::VIGOR>(up ? 8 : 5) );
+            break;
+
         default:
 #ifdef sts_asserts
             std::cerr << "attempted to use unimplemented card: " << c.getName() << std::endl;
@@ -1529,10 +2626,15 @@ void BattleContext::usePowerCard() {
             break;
 
         case CardId::CORRUPTION:
+            // ApplyPowerAction's constructor changes the costs, so Mummified Hand, which runs after use, already sees them.
+            cards.onBuffCorruption();
             addToBot( Actions::BuffPlayer<PS::CORRUPTION>() );
             break;
 
         case CardId::COMBUST:
+            if (player.hasStatus<PS::NO_DRAW>() && !player.hasStatus<PS::COMBUST>()) {
+                player.noDrawBeforeCombust = true;
+            }
             addToBot( Actions::BuffPlayer<PS::COMBUST>(up ? 7 : 5) );
             break;
 
@@ -1590,7 +2692,167 @@ void BattleContext::usePowerCard() {
 
         case CardId::WRAITH_FORM:
             addToBot( Actions::BuffPlayer<PS::INTANGIBLE>(up ? 3 : 2) );
-            addToBot( Actions::DebuffPlayer<PS::WRAITH_FORM>(1) );
+            addToBot( Actions::DebuffPlayer<PS::WRAITH_FORM>(-1, false) );  // its amount is the Dexterity it takes each turn
+            break;
+
+        // ************************* Defect, ported from Attemory/sts_lightspeed and checked against the game *************************
+
+        case CardId::BIASED_COGNITION:
+            addToBot( Actions::BuffPlayer<PS::FOCUS>(up ? 5 : 4) );
+            addToBot( Actions::DebuffPlayer<PS::BIAS>(1, false) );
+            break;
+
+        case CardId::BUFFER:
+            addToBot( Actions::BuffPlayer<PS::BUFFER>(up ? 2 : 1) );
+            break;
+
+        case CardId::CAPACITOR:
+            addToBot( Actions::IncreaseOrbSlots(up ? 3 : 2) );
+            break;
+
+        case CardId::CREATIVE_AI:
+            addToBot( Actions::BuffPlayer<PS::CREATIVE_AI>(1) );
+            break;
+
+        case CardId::DEFRAGMENT:
+            addToBot( Actions::BuffPlayer<PS::FOCUS>(up ? 2 : 1) );
+            break;
+
+        case CardId::ECHO_FORM:
+            addToBot( Actions::BuffPlayer<PS::ECHO_FORM>(1) );
+            break;
+
+        case CardId::ELECTRODYNAMICS:
+            if (!player.hasStatus<PS::ELECTRO>()) {
+                addToBot( Actions::BuffPlayer<PS::ELECTRO>(1) );
+            }
+            addToBot( Actions::ChannelOrbs(Orb::LIGHTNING, up ? 3 : 2) );
+            break;
+
+        case CardId::HEATSINKS:
+            addToBot( Actions::BuffPlayer<PS::HEATSINK>(up ? 2 : 1) );
+            break;
+
+        case CardId::HELLO_WORLD:
+            addToBot( Actions::BuffPlayer<PS::HELLO_WORLD>(1) );
+            break;
+
+        case CardId::LOOP:
+            addToBot( Actions::BuffPlayer<PS::LOOP>(up ? 2 : 1) );
+            break;
+
+        case CardId::MACHINE_LEARNING:
+            addToBot( Actions::BuffPlayer<PS::MACHINE_LEARNING>(1) );
+            break;
+
+        case CardId::SELF_REPAIR:
+            addToBot( Actions::BuffPlayer<PS::SELF_REPAIR>(up ? 10 : 7) );
+            break;
+
+        case CardId::STATIC_DISCHARGE:
+            addToBot( Actions::BuffPlayer<PS::STATIC_DISCHARGE>(up ? 2 : 1) );
+            break;
+
+        case CardId::STORM:
+            addToBot( Actions::BuffPlayer<PS::STORM>(1) );
+            break;
+
+        // ************************* Silent, ported with hewzhew/SpireSim as a reference and checked against the game *************************
+
+        case CardId::A_THOUSAND_CUTS:
+            addToBot( Actions::BuffPlayer<PS::THOUSAND_CUTS>(up ? 2 : 1) );
+            break;
+
+        case CardId::ACCURACY:
+            addToBot( Actions::BuffPlayer<PS::ACCURACY>(up ? 6 : 4) );
+            break;
+
+        case CardId::AFTER_IMAGE:
+            addToBot( Actions::BuffPlayer<PS::AFTER_IMAGE>(1) );
+            break;
+
+        case CardId::CALTROPS:
+            addToBot( Actions::BuffPlayer<PS::THORNS>(up ? 5 : 3) );
+            break;
+
+        case CardId::ENVENOM:
+            addToBot( Actions::BuffPlayer<PS::ENVENOM>(1) );
+            break;
+
+        case CardId::FOOTWORK:
+            addToBot( Actions::BuffPlayer<PS::DEXTERITY>(up ? 3 : 2) );
+            break;
+
+        case CardId::INFINITE_BLADES:
+            addToBot( Actions::BuffPlayer<PS::INFINITE_BLADES>(1) );
+            break;
+
+        case CardId::NOXIOUS_FUMES:
+            addToBot( Actions::BuffPlayer<PS::NOXIOUS_FUMES>(up ? 3 : 2) );
+            break;
+
+        case CardId::TOOLS_OF_THE_TRADE:
+            addToBot( Actions::BuffPlayer<PS::TOOLS_OF_THE_TRADE>(1) );
+            break;
+
+        case CardId::WELL_LAID_PLANS:
+            addToBot( Actions::BuffPlayer<PS::RETAIN_CARDS>(up ? 2 : 1) );
+            break;
+
+        // ************************* Watcher, ported with hewzhew/SpireSim as a reference and checked against the game *************************
+
+        case CardId::BATTLE_HYMN:
+            addToBot( Actions::BuffPlayer<PS::BATTLE_HYMN>(1) );
+            break;
+
+        case CardId::DEVA_FORM:
+            addToBot( Actions::DevaFormAction() );
+            break;
+
+        case CardId::DEVOTION:
+            addToBot( Actions::BuffPlayer<PS::DEVOTION>(up ? 3 : 2) );
+            break;
+
+        case CardId::ESTABLISHMENT:
+            addToBot( Actions::BuffPlayer<PS::ESTABLISHMENT>(1) );
+            break;
+
+        case CardId::FASTING: // EnergyDownPower is a debuff, so Artifact stops it and not the two buffs
+            addToBot( Actions::BuffPlayer<PS::STRENGTH>(up ? 4 : 3) );
+            addToBot( Actions::BuffPlayer<PS::DEXTERITY>(up ? 4 : 3) );
+            addToBot( Actions::DebuffPlayer<PS::FASTING>(1, false) );
+            break;
+
+        case CardId::FORESIGHT:
+            addToBot( Actions::BuffPlayer<PS::FORESIGHT>(up ? 4 : 3) );
+            break;
+
+        case CardId::LIKE_WATER:
+            addToBot( Actions::BuffPlayer<PS::LIKE_WATER>(up ? 7 : 5) );
+            break;
+
+        case CardId::MASTER_REALITY:
+            addToBot( Actions::BuffPlayer<PS::MASTER_REALITY>(1) );
+            break;
+
+        case CardId::MENTAL_FORTRESS:
+            addToBot( Actions::BuffPlayer<PS::MENTAL_FORTRESS>(up ? 6 : 4) );
+            break;
+
+        case CardId::NIRVANA:
+            addToBot( Actions::BuffPlayer<PS::NIRVANA>(up ? 4 : 3) );
+            break;
+
+        case CardId::OMEGA:
+            addToBot( Actions::BuffPlayer<PS::OMEGA>(up ? 60 : 50) );
+            break;
+
+        case CardId::RUSHDOWN:
+            addToBot( Actions::BuffPlayer<PS::RUSHDOWN>(2) );
+            break;
+
+        case CardId::STUDY:
+            addToBot( Actions::BuffPlayer<PS::STUDY>(1) );
             break;
 
         default:
@@ -1637,6 +2899,7 @@ void BattleContext::onUseAttackCard() {
     }
 
     if (p.hasStatus<PS::PANACHE>() && --p.panacheCounter <= 0) {
+        p.panacheCounter = 5;
         addToBot( Actions::DamageAllEnemy(p.getStatus<PS::PANACHE>()) );
     }
 
@@ -1648,7 +2911,7 @@ void BattleContext::onUseAttackCard() {
         p.removeStatus<PS::VIGOR>();
     }
 
-    if (p.hasStatus<PS::FREE_ATTACK_POWER>()) {
+    if (!item.purgeOnUse && p.hasStatus<PS::FREE_ATTACK_POWER>()) { // FreeAttackPower.onUseCard skips a copy
         p.decrementStatus<PS::FREE_ATTACK_POWER>();
     }
 
@@ -1688,9 +2951,14 @@ void BattleContext::onUseAttackCard() {
         addToBot( Actions::BuffPlayer<PS::STRENGTH>(1) );
     }
 
-    if (p.hasRelic<R::NECRONOMICON>() && !p.haveUsedNecronomiconThisTurn && !item.freeToPlay && !item.purgeOnUse &&
-        (c.costForTurn >= 2 || c.isXCost() && item.energyOnUse >= 2)) {
-        queuePurgeCard(c, item.target);
+    if (p.hasRelic<R::NECRONOMICON>() && !p.haveUsedNecronomiconThisTurn &&
+        (c.costForTurn >= 2 && !c.freeToPlayOnce || c.isXCost() && item.energyOnUse >= 2)) {
+        // Unlike Double Tap's copy, this one isn't in limbo, so Rampage's ModifyDamageAction misses it.
+        CardInstance copy = c;
+        if (c.getId() == CardId::RAMPAGE && !item.purgeOnUse) {
+            copy.specialData = static_cast<std::int16_t>(copy.specialData - (c.isUpgraded() ? 8 : 5));
+        }
+        queuePurgeCard(copy, item.target);
         p.haveUsedNecronomiconThisTurn = true;
     }
 
@@ -1767,6 +3035,7 @@ void BattleContext::onUseSkillCard() {
     }
 
     if (p.hasStatus<PS::PANACHE>() && --p.panacheCounter <= 0) {
+        p.panacheCounter = 5;
         addToBot( Actions::DamageAllEnemy(p.getStatus<PS::PANACHE>()) );
     }
 
@@ -1812,9 +3081,12 @@ void BattleContext::onUseSkillCard() {
     // ********* Enemy Powers onUseCard *********
     // todo Choke Power
 
-    auto &m = monsters.arr[0];
-    if (m.hasStatus<MS::ENRAGE>()) {
-        m.buff<MS::STRENGTH>(m.getStatus<MS::ENRAGE>());
+    // Colosseum's second fight has Gremlin Nob in the second slot.
+    for (int i = 0; i < monsters.monsterCount; ++i) {
+        auto &m = monsters.arr[i];
+        if (m.hasStatus<MS::ENRAGE>()) {
+            m.buff<MS::STRENGTH>(m.getStatus<MS::ENRAGE>());
+        }
     }
 }
 
@@ -1846,7 +3118,39 @@ void BattleContext::onUsePowerCard() {
     }
 
     if (p.hasStatus<PS::PANACHE>() && --p.panacheCounter <= 0) {
+        p.panacheCounter = 5;
         addToBot( Actions::DamageAllEnemy(p.getStatus<PS::PANACHE>()) );
+    }
+
+    if (!item.purgeOnUse && p.hasStatus<PS::AMPLIFY>()) {
+        queuePurgeCard(c, item.target);
+        p.decrementStatus<PS::AMPLIFY>();
+    }
+
+    if (p.hasStatus<PS::HEATSINK>()) {
+        addToTop( Actions::DrawCards(p.getStatus<PS::HEATSINK>()) );
+    }
+
+    if (p.hasStatus<PS::STORM>()) {
+        addToBot( Actions::ChannelOrbs(Orb::LIGHTNING, p.getStatus<PS::STORM>()) );
+    }
+
+    // Force Field's triggerOnCardPlayed, and its constructor counts cardsPlayedThisCombat for the deck's next copy.
+    ++p.powersPlayedThisCombat;
+    for (int i = 0; i < cards.cardsInHand; ++i) {
+        if (cards.hand[i].getId() == CardId::FORCE_FIELD) {
+            cards.hand[i].updateCost(-1);
+        }
+    }
+    for (auto &card : cards.discardPile) {
+        if (card.getId() == CardId::FORCE_FIELD) {
+            card.updateCost(-1);
+        }
+    }
+    for (auto &card : cards.drawPile) {
+        if (card.getId() == CardId::FORCE_FIELD) {
+            card.updateCost(-1);
+        }
     }
 
     // ********* Relics onUseCard *********
@@ -1875,10 +3179,12 @@ void BattleContext::onUsePowerCard() {
         mummifiedHandOnUsePower();
     }
 
-//    auto &m = monsters.optionMap[2];
-//    if (m.hasStatusInternal<MS::CURIOSITY>()) {
-//        m.buff<MS::STRENGTH>(m.getStatus<MS::CURIOSITY>());
-//    }
+    for (int i = 0; i < monsters.monsterCount; ++i) {
+        auto &m = monsters.arr[i];
+        if (m.hasStatus<MS::CURIOSITY>()) {
+            m.buff<MS::STRENGTH>(m.getStatus<MS::CURIOSITY>());
+        }
+    }
 }
 
 void BattleContext::onUseStatusOrCurseCard() {
@@ -1909,6 +3215,7 @@ void BattleContext::onUseStatusOrCurseCard() {
     }
 
     if (p.hasStatus<PS::PANACHE>() && --p.panacheCounter <= 0) {
+        p.panacheCounter = 5;
         addToBot( Actions::DamageAllEnemy(p.getStatus<PS::PANACHE>()) );
     }
 
@@ -1937,8 +3244,20 @@ void BattleContext::onUseStatusOrCurseCard() {
 void BattleContext::onAfterUseCard() {
     auto &item = curCardQueueItem;
     auto &c = item.card;
+    bool rebound = false;
 
     if (item.triggerOnUse) {
+        // ReboundPower.onAfterUseCard runs for every card that triggers, including copies and powers, and skips the Rebound
+        // that applied it. A Rebound played under another one is sent back like any other card.
+        if (player.hasStatus<PS::REBOUND>()) {
+            if (player.reboundJustApplied) {
+                player.reboundJustApplied = false;
+            } else {
+                rebound = c.getType() != CardType::POWER;
+                player.decrementStatus<PS::REBOUND>();
+            }
+        }
+
         auto &m = monsters.arr[0];
         if (m.hasStatus<MS::TIME_WARP>()) {
             auto timeWarp = m.getStatus<MS::TIME_WARP>();
@@ -1964,22 +3283,11 @@ void BattleContext::onAfterUseCard() {
         return;
     }
 
-    bool rebound = false;
     c.freeToPlayOnce = false;
 
     if (c.getType() == CardType::POWER) {
         c.id = CardId::INVALID;
         return;
-    }
-
-    if (player.hasStatus<PS::REBOUND>()) {
-        if (player.getStatus<PS::REBOUND>() == 1) {
-            rebound = true;
-            player.setHasStatus<PS::REBOUND>(false);
-
-        } else {
-            player.setStatusValueNoChecks<PS::REBOUND>(1);
-        }
     }
 
     bool spoonProc = false;
@@ -1999,16 +3307,15 @@ void BattleContext::onAfterUseCard() {
             cards.moveToDrawPileTop(c);
 
         } else if (c.id == CardId::TANTRUM) {
-            cards.shuffleIntoDrawPile(cardRandomRng, c);
+            CardInstance landing = c;
+            landing.setCostForTurn(landing.cost); // a card landing on the draw pile, as moveToDrawPileTop does
+            cards.shuffleIntoDrawPile(cardRandomRng, landing);
 
         } else {
-            // The game calls OnCardDrawOrDiscard here which only does two things:
-            // 1. sets the damage on all shivs in hand if you have accuracy power,
-            // 2. sets the cost of all skills in hand to -9 if you have corruption
-            // we will handle these tasks elsewhere
             cards.moveToDiscardPile(c);
         }
     }
+    cards.onCardDrawOrDiscard(*this);
     // TODO these must be done in the cards method itself
     // todo make Accuracy part of calculateBaseDamage
 
@@ -2039,7 +3346,7 @@ void BattleContext::callEndOfTurnActions() {
 
     if (player.hasRelic<R::FROZEN_CORE>()) {
         if (player.hasEmptyOrb()) {
-            player.channelOrb(Orb::FROST);
+            player.channelOrb(*this, Orb::FROST);
         }
     }
 
@@ -2096,6 +3403,9 @@ void BattleContext::callEndOfTurnActions() {
                 addToBotCard(item);
                 break;
             }
+            case CardId::PRIDE:
+                addToBot( Actions::MakeTempCardInDrawPile(CardInstance(CardId::PRIDE), 1, false) );
+                break;
             default:
                 break;
         }
@@ -2118,12 +3428,17 @@ void BattleContext::onTurnEnding() {
     addToBot(Actions::UnnamedEndOfTurnAction());
 }
 
-void BattleContext::callEndTurnEarlySequence() {
+void BattleContext::callEndTurnEarlySequence(bool queueStillRunning) {
     while (!cardQueue.isEmpty()) {
         auto item = cardQueue.popFront();
         if (item.autoplay && !item.purgeOnUse) {
             addToBot( Actions::TimeEaterPlayCardQueueItem(item) );
         }
+    }
+    // Unceasing Top still sees the empty hand while the end of the turn is queued. Seen on the real game with Time Warp.
+    // UnceasingTop.onRefreshHand needs an empty action queue, so it can't go off from inside a card's own actions.
+    if (!queueStillRunning && player.hasRelic<R::UNCEASING_TOP>() && cards.cardsInHand == 0) {
+        addToBot( Actions::DrawCards(1) );
     }
     addToTopCard(CardQueueItem::endTurnItem());
     endTurnQueued = true;
@@ -2150,12 +3465,17 @@ void BattleContext::applyEndOfRoundPowers() {
 }
 
 void BattleContext::afterMonsterTurns() {
+    const bool roundEnded = !skipMonsterTurn;
+
     // ********* Enemy powers atEndOfRound *********
     if (!skipMonsterTurn) {
         applyEndOfRoundPowers();
     }
 
     ++turn;
+    if (skipMonsterTurn) {
+        ++monsterTurnsSkipped;
+    }
     skipMonsterTurn = false;
     turnHasEnded = false;
 
@@ -2172,13 +3492,14 @@ void BattleContext::afterMonsterTurns() {
     player.applyStartOfTurnPowers(*(this));
 
     // player.applyStartOfTurnOrbs()
-    //for each orb : OnStartOfTurn
-    //if have relic cables: apply orb[0].OnStartOfTurn again
+    for (int i = 0; i < player.orbSlots; ++i) {
+        player.orbOnStartOfTurn(*this, i);
+    }
+    if (player.hasRelic<R::GOLD_PLATED_CABLES>() && player.hasOrb()) {
+        player.orbOnStartOfTurn(*this, 0);
+    }
 
-    if (player.hasStatus<PS::BARRICADE>()) {
-
-    } else if (player.hasStatus<PS::BLUR>()) {
-        player.decrementStatus<PS::BLUR>();
+    if (player.hasStatus<PS::BARRICADE>() || player.hasStatus<PS::BLUR>()) {
 
     } else if (player.hasRelic<R::CALIPERS>()) {
         player.block = std::max(0, player.block-15);
@@ -2187,13 +3508,22 @@ void BattleContext::afterMonsterTurns() {
         player.block = 0;
     }
 
+    // BlurPower.atEndOfRound queues its ReducePowerAction, so it's still there for the check above.
+    if (roundEnded && player.hasStatus<PS::BLUR>()) {
+        player.decrementStatus<PS::BLUR>();
+    }
+
     if (isBattleOver) {
         return;
     }
 
-    addToBot(Actions::DrawCards(player.cardDrawPerTurn)); // in this action, an effect queue item is added to rechard energy lol
+    // DrawCardAction's constructor makes the PlayerTurnEffect that recharges energy, so Collect's Miracle is queued ahead of this draw.
+    player.rechargeEnergy(*this);
 
-    if (player.hasStatus<PS::DRAW_REDUCTION>()) {
+    addToBot(Actions::DrawCards(player.cardDrawPerTurn));
+
+    // DrawReductionPower.atEndOfRound, which Vault's skipped round doesn't reach.
+    if (roundEnded && player.hasStatus<PS::DRAW_REDUCTION>()) {
         if (player.wasJustApplied<PS::DRAW_REDUCTION>()) {
             player.setJustApplied<PS::DRAW_REDUCTION>(false);
         } else {
@@ -2210,8 +3540,6 @@ void BattleContext::afterMonsterTurns() {
     player.attacksPlayedThisTurn = 0;
     player.skillsPlayedThisTurn = 0;
     player.cardsDiscardedThisTurn = 0;
-
-    player.rechargeEnergy(*this); // this is called by the PlayerTurnEffect in game, I think it can be done here
 }
 
 void BattleContext::obtainPotion(Potion p) {
@@ -2240,6 +3568,12 @@ void BattleContext::drinkPotion(int idx, int target) {
     const bool hasBark = player.hasRelic<R::SACRED_BARK>();
     const Potion p = potions[idx];
     discardPotion(idx);
+    if (potionRequiresTarget(p)) {
+        player.lastTargetedMonster = target;
+    }
+    if (player.hasRelic<R::TOY_ORNITHOPTER>()) {  // FIX: relic had no implementation
+        addToBot(Actions::HealPlayer(5));
+    }
 
     // todo - dont need to add to bot because always will have nothing in actionQueue?
 
@@ -2266,7 +3600,7 @@ void BattleContext::drinkPotion(int idx, int target) {
 
 
         case Potion::BLOOD_POTION: {
-            int healAmt = static_cast<int>((static_cast<float>(player.maxHp * (hasBark ? 20 : 40)) / 100.0f));
+            int healAmt = static_cast<int>((static_cast<float>(player.maxHp * (hasBark ? 40 : 20)) / 100.0f));  // FIX: was inverted
             addToBot(Actions::HealPlayer(healAmt));
             break;
         }
@@ -2396,7 +3730,16 @@ void BattleContext::drinkPotion(int idx, int target) {
             break;
 
         case Potion::SMOKE_BOMB:
-            // todo
+            // FIX (was a no-op): escape the fight (not usable against bosses), forfeiting rewards
+            if (!isBossEncounter(encounter)) {
+                miscBits.set(1);  // escaped flag, read by exitBattle
+                cardQueue.clear();
+                actionQueue.clear();
+                if (player.hasRelic<R::TOY_ORNITHOPTER>()) {  // the game's queue still runs its heal
+                    player.heal(5);
+                }
+                outcome = Outcome::PLAYER_VICTORY;
+            }
             break;
 
         case Potion::SNECKO_OIL:
@@ -2410,7 +3753,7 @@ void BattleContext::drinkPotion(int idx, int target) {
             break;
 
         case Potion::STANCE_POTION:
-            addToBot(Actions::SetState(InputState::CHOOSE_STANCE_ACTION));
+            addToBot(Actions::ChooseStanceAction());
             break;
 
         case Potion::STRENGTH_POTION:
@@ -2516,16 +3859,31 @@ void BattleContext::playTopCardInDrawPile(int monsterTargetIdx, bool exhausts) {
     if (cards.drawPile.empty()) {
         if (!cards.discardPile.empty()) {
             addToTop( Actions::PlayTopCard(monsterTargetIdx, exhausts) );
+            onShuffle();
             addToTop( Actions::EmptyDeckShuffle() );
         }
         return;
     }
 
-    CardQueueItem item(cards.popFromDrawPile(), monsterTargetIdx, player.energy);
+    auto top = cards.popFromDrawPile();
+    if (top.getId() == CardId::MIND_BLAST) {
+        top.specialData = static_cast<std::int16_t>(cards.drawPile.size() + 1);
+    } else if (top.getId() == CardId::STACK) {
+        top.specialData = static_cast<std::int16_t>(cards.discardPile.size() + 1);
+    }
+    CardQueueItem item(top, monsterTargetIdx, player.energy);
     item.exhaustOnUse = exhausts;
     item.autoplay = true;
     item.freeToPlay = true; // todo remove the autoplay boolean? added this instead
-    addToTopCard(item);
+    addToBotCard(item);
+}
+
+// Blood for Blood's and Eviscerate's makeCopy set the new card's cost from the fight so far.
+void BattleContext::applyMakeCopy(CardInstance &c) const {
+    c.tookDamageTimes(player.timesDamagedThisCombat);
+    if (c.getId() == CardId::EVISCERATE) {
+        c.setCostForTurn(c.cost - player.cardsDiscardedThisTurn);
+    }
 }
 
 void BattleContext::moveToHandHelper(CardInstance c) {
@@ -2547,7 +3905,7 @@ void BattleContext::exhaustSpecificCardInHand(int idx, std::int16_t uniqueId) {
         foundIdx = idx;
     } else {
         for (int i = 0; i < cards.cardsInHand; ++i) {
-            if (cards.hand[idx].uniqueId == uniqueId) {
+            if (cards.hand[i].uniqueId == uniqueId) {
                foundIdx = i;
                break;
             }
@@ -2573,6 +3931,19 @@ void BattleContext::restoreRetainedCards(int count) {
         auto &c = cards.limbo[i];
         // check that c retained or self retained?
         c.retain = false;
+        switch (c.getId()) { // AbstractCard.onRetained
+            case CardId::PERSEVERANCE:
+                c.specialData = static_cast<std::int16_t>(c.specialData + (c.isUpgraded() ? 3 : 2));
+                break;
+            case CardId::WINDMILL_STRIKE:
+                c.specialData = static_cast<std::int16_t>(c.specialData + (c.isUpgraded() ? 5 : 4));
+                break;
+            case CardId::SANDS_OF_TIME:
+                addToBot( Actions::ReduceCostAction(c.getUniqueId()) );
+                break;
+            default:
+                break;
+        }
         cards.hand[cards.cardsInHand++] = c;
     }
 }
@@ -2659,7 +4030,7 @@ void BattleContext::triggerOnOtherCardPlayed(const CardInstance &usedCard) {
         --painCount;
     }
     for (int i = 0; i < painCount; ++i) {
-        addToTop(Actions::PlayerLoseHp(1));
+        addToTop(Actions::PlayerLoseHp(1, true));
     }
 
     const auto thousandCuts = player.getStatus<PS::THOUSAND_CUTS>();
@@ -2678,7 +4049,7 @@ int BattleContext::calculateCardDamage(const CardInstance &card, int targetIdx, 
         damage += 3;
     }
 
-    if (player.hasRelic<R::WRIST_BLADE>() && card.costForTurn == 0) {
+    if (player.hasRelic<R::WRIST_BLADE>() && (card.costForTurn == 0 || (card.freeToPlayOnce && card.cost != -1))) {
         damage += 4;
     }
 
@@ -2735,7 +4106,7 @@ int BattleContext::calculateCardDamage(const CardInstance &card, int targetIdx, 
     }
 
     if (monster.hasStatus<MS::INTANGIBLE>()) {
-        damage = std::max(damage, 1.0f);
+        damage = std::min(damage, 1.0f);  // Body Slam with no block stays at 0
     }
 
     return std::max(0, static_cast<int>(damage));
@@ -2751,6 +4122,8 @@ int BattleContext::calculateCardBlock(int baseBlock) const {
         block = std::max(0, block + player.getStatus<PS::DEXTERITY>());
     }
 
+    block = std::max(0, block); // Steam Barrier's base block can go below 0
+
     if (player.hasStatus<PS::FRAIL>()) {
         return block * 3 / 4;
     }
@@ -2761,6 +4134,9 @@ int BattleContext::calculateCardBlock(int baseBlock) const {
 void BattleContext::queuePurgeCard(const CardInstance &c, int target) {
     CardQueueItem item;
     item.card = c;
+    if (c.getId() == CardId::STACK && c.specialData == 0) {
+        item.card.specialData = static_cast<std::int16_t>(cards.discardPile.size() + 1);
+    }
     item.purgeOnUse = true;
     item.target = target;
     item.energyOnUse = curCardQueueItem.energyOnUse;
@@ -2792,13 +4168,67 @@ void BattleContext::onManualDiscard(const CardInstance &c) {
     }
 }
 
+void BattleContext::discardFromHand(int handIdx, int flyingFrom, bool relicsFirst) {
+    const int firstFlying = flyingFrom < 0 ? static_cast<int>(cards.discardPile.size()) : flyingFrom;
+    const CardInstance c = cards.hand[handIdx];
+    cards.removeFromHandAtIdx(handIdx);
+    cards.moveToDiscardPile(c);
+    cards.onCardDrawOrDiscard(*this);
+    if (!relicsFirst) {
+        onManualDiscard(c);
+    }
+
+    ++player.cardsDiscardedThisTurn;
+    if (!turnHasEnded) { // AbstractPlayer.updateCardsOnDiscard: only Eviscerate does anything with it
+        if (player.hasRelic<R::HOVERING_KITE>() && !player.kiteTriggeredThisTurn) {
+            player.kiteTriggeredThisTurn = true;
+            addToBot( Actions::GainEnergy(1) );
+        }
+        if (player.hasRelic<R::TINGSHA>()) {
+            addToBot( Actions::DamageRandomEnemy(3) );
+        }
+        if (player.hasRelic<R::TOUGH_BANDAGES>()) {
+            addToBot( Actions::GainBlock(3) );
+        }
+
+        auto didDiscard = [] (CardInstance &card) {
+            if (card.getId() == CardId::EVISCERATE) {
+                card.setCostForTurn(card.costForTurn - 1);
+            }
+        };
+        for (int i = 0; i < cards.cardsInHand; ++i) {
+            didDiscard(cards.hand[i]);
+        }
+        for (int i = 0; i < firstFlying; ++i) {
+            didDiscard(cards.discardPile[i]);
+        }
+        for (auto &card : cards.drawPile) {
+            didDiscard(card);
+        }
+    }
+
+    if (relicsFirst) {
+        onManualDiscard(c);
+    }
+}
+
+DamageMatrix BattleContext::calculateMultiDamage(const CardInstance &card, int baseDamage) const {
+    DamageMatrix matrix {0};
+    for (int i = 0; i < monsters.monsterCount; ++i) {
+        if (!monsters.arr[i].isDeadOrEscaped()) {
+            matrix[i] = static_cast<std::uint16_t>(std::min(static_cast<int>(std::numeric_limits<std::uint16_t>::max()), calculateCardDamage(card, i, baseDamage)));
+        }
+    }
+    return matrix;
+}
+
 void BattleContext::onShuffle() {
     if (player.hasRelic<R::THE_ABACUS>()) {
         addToBot( Actions::GainBlock(6) );
     }
 
     if (player.hasRelic<R::MELANGE>()) {
-//        addToBot(Actions::SetState(InputState::SCRY, 3) ); // TODO SCRY Action
+        addToBot( Actions::ScryAction(3) );
     }
 
     if (player.hasRelic<R::SUNDIAL>()) {
@@ -2821,8 +4251,9 @@ void BattleContext::triggerAndMoveToExhaustPile(CardInstance c) {
     }
 
     if (player.hasRelic<R::DEAD_BRANCH>()){
-        CardId id = getTrulyRandomCardInCombat(cardRandomRng, player.cc);
-        addToBot(Actions::MakeTempCardInHand(id));
+        CardInstance c(getTrulyRandomCardInCombat(cardRandomRng, player.cc));
+        applyMakeCopy(c);
+        addToBot(Actions::MakeTempCardInHand(c));
     }
 
     if (player.hasStatus<PS::DARK_EMBRACE>()) {
@@ -2860,8 +4291,9 @@ void BattleContext::mummifiedHandOnUsePower() {
     }
 
     for (int i = matchingIdxList.size()-1; i >= 0; --i) {
+        // The game's queue still holds the card being played at this point, so that card is left out too.
         const auto uniqueId = cards.hand[matchingIdxList[i]].getUniqueId();
-        if (cardQueue.containsCardWithId(uniqueId)) {
+        if (cardQueue.containsCardWithId(uniqueId) || uniqueId == curCardQueueItem.card.getUniqueId()) {
             matchingIdxList.remove(i);
         }
     }
@@ -2883,6 +4315,7 @@ void BattleContext::openDiscoveryScreen(std::array<CardId, 3> discoveryCards, in
     cardSelectInfo.canPickZero = false;
     cardSelectInfo.cards = discoveryCards;
     cardSelectInfo.discovery_CopyCount() = copyCount;
+    cardSelectInfo.discoveryIsFree = true;
 }
 
 void BattleContext::openSimpleCardSelectScreen(CardSelectTask task, int count) {
@@ -2926,8 +4359,56 @@ void BattleContext::chooseArmamentsCard(int handIdx) {
 
 }
 
+// The game takes all the picks and moves them when its screen closes, in the order they were picked. Nothing can read the
+// hand in between, as Reflex's draw is at the bottom of the queue, so one at a time comes to the same thing.
+void BattleContext::chooseDiscardCard(int handIdx) {
+    const int picksLeft = cardSelectInfo.pickCount - 1;
+    const int flyingFrom = cardSelectInfo.discard_FlyingFrom();
+    discardFromHand(handIdx, flyingFrom);
+    if (picksLeft > 0) {
+        addToTop( Actions::DiscardAction(picksLeft, false, flyingFrom) );
+    }
+}
+
+// The screen takes the pick out of the hand, and NightmareAction puts it back on top.
+void BattleContext::chooseNightmareCard(int handIdx) {
+    const CardInstance c = cards.hand[handIdx];
+    player.addNightmare(c);
+    cards.removeFromHandAtIdx(handIdx);
+    cards.moveToHand(c);
+}
+
+// RetainCardsAction adds each pick back on top of the hand, and an Ethereal card comes back without being retained.
+void BattleContext::chooseRetainCard(int handIdx) {
+    const int picksLeft = cardSelectInfo.pickCount - 1;
+    const int selected = cardSelectInfo.retain_SelectedCount() + 1;
+    if (handIdx == CardSelectInfo::RETAIN_DONE_IDX) {
+        return;
+    }
+    CardInstance c = cards.hand[handIdx];
+    if (!c.isEthereal()) {
+        c.retain = true;
+    }
+    cards.removeFromHandAtIdx(handIdx);
+    cards.moveToHand(c);
+    if (picksLeft > 0) {
+        addToTop( Actions::RetainCardsAction(picksLeft, selected) );
+    }
+}
+
+void BattleContext::chooseSetupCard(int handIdx) {
+    CardInstance c = cards.hand[handIdx];
+    if (c.cost > 0) {
+        c.freeToPlayOnce = true;
+    }
+    cards.removeFromHandAtIdx(handIdx);
+    cards.moveToDrawPileTop(c);
+}
+
 void BattleContext::chooseCodexCard(CardId id) {
     CardInstance c(id);
+    upgradeIfMasterReality(c);
+    applyMakeCopy(c);
     c.uniqueId = static_cast<std::int16_t>(cards.nextUniqueCardId++);
     cards.notifyAddCardToCombat(c);
     cards.shuffleIntoDrawPile(cardRandomRng, c);
@@ -2970,6 +4451,7 @@ void BattleContext::chooseDualWieldCard(int handIdx) {
 
     dualWieldCard.uniqueId = static_cast<std::int16_t>(cards.nextUniqueCardId++); // dual wield buggy
     cards.hand[i++] = dualWieldCard;
+    upgradeIfMasterReality(dualWieldCard); // its copies go through the card effects, which upgrade them
 
     for (int x = 0; x < copyCount; ++x) {
         if (cards.cardsInHand + 1 <= CardManager::MAX_HAND_SIZE) {
@@ -2986,7 +4468,7 @@ void BattleContext::chooseDualWieldCard(int handIdx) {
 void BattleContext::chooseDiscardToHandCard(int discardIdx, bool forZeroCost) {
     CardInstance c = cards.discardPile[discardIdx];
     cards.removeFromDiscard(discardIdx);
-    if (cardSelectInfo.cardSelectTask == CardSelectTask::LIQUID_MEMORIES_POTION) {
+    if (forZeroCost) {
         c.setCostForTurn(0);
     }
     moveToHandHelper(c);
@@ -2995,7 +4477,11 @@ void BattleContext::chooseDiscardToHandCard(int discardIdx, bool forZeroCost) {
 void BattleContext::chooseDiscoveryCard(CardId id) {
     const auto discoveryAmount = cardSelectInfo.data0;
     CardInstance c(id);
-    c.setCostForTurn(0);
+    upgradeIfMasterReality(c);
+    applyMakeCopy(c);
+    if (cardSelectInfo.discoveryIsFree) {
+        c.setCostForTurn(0);
+    }
 
     for (int i = 0; i < discoveryAmount; ++i) {
         if (cards.cardsInHand + 1 <= CardManager::MAX_HAND_SIZE) {
@@ -3044,7 +4530,15 @@ void BattleContext::chooseHeadbuttCard(int discardIdx) {
 }
 
 void BattleContext::chooseRecycleCard(int handIdx) {
-    // todo
+    const CardInstance c = cards.hand[handIdx];
+    if (c.costForTurn == -1) {
+        addToTop( Actions::GainEnergy(player.energy) );
+    } else if (c.costForTurn > 0) {
+        addToTop( Actions::GainEnergy(c.costForTurn) );
+    }
+    cards.removeFromHandAtIdx(handIdx);
+    triggerAndMoveToExhaustPile(c);
+    cards.onCardDrawOrDiscard(*this);
 }
 
 void BattleContext::chooseWarcryCard(int handIdx) {
@@ -3089,10 +4583,7 @@ void BattleContext::chooseGambleCards(const fixed_list<int, 10> &idxs) {
     // assume idxs is sorted in descending order
     addToTop( Actions::DrawCards(listCopy.size()) );
     for (const auto handIdx : listCopy) {
-        auto c = cards.hand[handIdx];
-        cards.removeFromHandAtIdx(handIdx);
-        cards.moveToDiscardPile(c);
-        onManualDiscard(c);
+        discardFromHand(handIdx, -1, true); // GamblingChipAction counts the discard before the card's own trigger
     }
 }
 

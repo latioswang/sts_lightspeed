@@ -147,6 +147,7 @@ bool isValidSingleCardSelectAction(const BattleContext &bc, const search::Action
             }
             return bc.cards.exhaustPile[a.getSelectIdx()].id != sts::CardId::EXHUME;
 
+        case CardSelectTask::DISCARD:
         case CardSelectTask::EXHAUST_ONE:
         case CardSelectTask::FORETHOUGHT:
         case CardSelectTask::NIGHTMARE:
@@ -154,6 +155,24 @@ bool isValidSingleCardSelectAction(const BattleContext &bc, const search::Action
         case CardSelectTask::SETUP:
         case CardSelectTask::WARCRY:
             return a.getSelectIdx() >= 0 && a.getSelectIdx() < bc.cards.cardsInHand;
+
+        case CardSelectTask::RETAIN:
+            return a.getSelectIdx() == CardSelectInfo::RETAIN_DONE_IDX ||
+                   (a.getSelectIdx() >= 0 && a.getSelectIdx() < bc.cards.cardsInHand - bc.cardSelectInfo.data0);
+
+        case CardSelectTask::SCRY:
+            return a.getSelectIdx() == CardSelectInfo::SCRY_DONE_IDX ||
+                   (a.getSelectIdx() >= bc.cardSelectInfo.data0 && a.getSelectIdx() < bc.cardSelectInfo.pickCount);
+
+        case CardSelectTask::OMNISCIENCE:
+            return a.getSelectIdx() >= 0 && a.getSelectIdx() < static_cast<int>(bc.cards.drawPile.size());
+
+        case CardSelectTask::FOREIGN_INFLUENCE:
+        case CardSelectTask::WISH:
+            return a.getSelectIdx() >= 0 && a.getSelectIdx() < 3;
+
+        case CardSelectTask::CHOOSE_STANCE:
+            return a.getSelectIdx() >= 0 && a.getSelectIdx() < 2;
 
         case CardSelectTask::ARMAMENTS:
             if (a.getSelectIdx() < 0 || a.getSelectIdx() >= bc.cards.cardsInHand) {
@@ -389,12 +408,54 @@ void executeSingleCardSelectActionHelper(BattleContext &bc, search::Action a) {
             bc.chooseWarcryCard(idx);
             break;
 
-        case CardSelectTask::MEDITATE:
-        case CardSelectTask::NIGHTMARE:
         case CardSelectTask::RECYCLE:
-        case CardSelectTask::SETUP:
+            bc.chooseRecycleCard(idx);
+            break;
+
         case CardSelectTask::SEEK:
-            // not implemented
+            bc.chooseDrawToHandCards(&idx, 1);
+            break;
+
+        case CardSelectTask::DISCARD:
+            bc.chooseDiscardCard(idx);
+            break;
+
+        case CardSelectTask::NIGHTMARE:
+            bc.chooseNightmareCard(idx);
+            break;
+
+        case CardSelectTask::RETAIN:
+            bc.chooseRetainCard(idx);
+            break;
+
+        case CardSelectTask::SETUP:
+            bc.chooseSetupCard(idx);
+            break;
+
+        case CardSelectTask::MEDITATE:
+            bc.chooseMeditateCard(idx);
+            break;
+
+        case CardSelectTask::SCRY:
+            bc.chooseScryCard(idx);
+            break;
+
+        case CardSelectTask::OMNISCIENCE:
+            bc.chooseOmniscienceCard(idx);
+            break;
+
+        case CardSelectTask::FOREIGN_INFLUENCE:
+            bc.chooseForeignInfluenceCard(idx);
+            break;
+
+        case CardSelectTask::WISH:
+            bc.chooseWishOption(idx);
+            break;
+
+        case CardSelectTask::CHOOSE_STANCE:
+            bc.chooseStanceOption(idx);
+            break;
+
         case CardSelectTask::INVALID:
         default:
             break;
@@ -508,7 +569,45 @@ std::vector<search::Action> search::Action::enumerateCardSelectActions(const Bat
             break;
 
         case CardSelectTask::EXHAUST_ONE:
+        case CardSelectTask::RECYCLE:
+        case CardSelectTask::DISCARD:
+        case CardSelectTask::NIGHTMARE:
+        case CardSelectTask::SETUP:
             setupCardOptionsHelper(actions, bc.cards.hand.begin(), bc.cards.hand.begin() + bc.cards.cardsInHand);
+            break;
+
+        case CardSelectTask::RETAIN: { // picked cards are at the end of the hand, and the screen can close at any point
+            const int selected = bc.cardSelectInfo.data0;
+            setupCardOptionsHelper(actions, bc.cards.hand.begin(), bc.cards.hand.begin() + bc.cards.cardsInHand - selected);
+            actions.emplace_back(search::ActionType::SINGLE_CARD_SELECT, CardSelectInfo::RETAIN_DONE_IDX);
+            break;
+        }
+
+        case CardSelectTask::SCRY: // offsets from the top of the draw pile, and the screen can close at any point
+            for (int i = bc.cardSelectInfo.data0; i < bc.cardSelectInfo.pickCount; ++i) {
+                actions.emplace_back(search::ActionType::SINGLE_CARD_SELECT, i);
+            }
+            actions.emplace_back(search::ActionType::SINGLE_CARD_SELECT, CardSelectInfo::SCRY_DONE_IDX);
+            break;
+
+        case CardSelectTask::MEDITATE:
+            setupCardOptionsHelper(actions, bc.cards.discardPile.begin(), bc.cards.discardPile.end());
+            break;
+
+        case CardSelectTask::OMNISCIENCE:
+            setupCardOptionsHelper(actions, bc.cards.drawPile.begin(), bc.cards.drawPile.end());
+            break;
+
+        case CardSelectTask::FOREIGN_INFLUENCE:
+        case CardSelectTask::WISH:
+            for (int i = 0; i < 3; ++i) {
+                actions.emplace_back(search::ActionType::SINGLE_CARD_SELECT, i);
+            }
+            break;
+
+        case CardSelectTask::CHOOSE_STANCE:
+            actions.emplace_back(search::ActionType::SINGLE_CARD_SELECT, 0);
+            actions.emplace_back(search::ActionType::SINGLE_CARD_SELECT, 1);
             break;
 
         case CardSelectTask::FORETHOUGHT:
@@ -517,8 +616,13 @@ std::vector<search::Action> search::Action::enumerateCardSelectActions(const Bat
             break;
 
         case CardSelectTask::HEADBUTT:
+        case CardSelectTask::HOLOGRAM:
         case CardSelectTask::LIQUID_MEMORIES_POTION:
             setupCardOptionsHelper(actions, bc.cards.discardPile.begin(), bc.cards.discardPile.end());
+            break;
+
+        case CardSelectTask::SEEK:
+            setupCardOptionsHelper(actions, bc.cards.drawPile.begin(), bc.cards.drawPile.end());
             break;
 
         case CardSelectTask::SECRET_TECHNIQUE:

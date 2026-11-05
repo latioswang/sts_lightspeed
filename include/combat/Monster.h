@@ -46,19 +46,20 @@ namespace sts {
         bool halfDead = false;
         bool escapeNext = false;
         MMID moveHistory[2] = {MMID::INVALID, MMID::INVALID };
+        bool lastMoveWasRolled = false;  // true if moveHistory[0] came from rollMove (RNG), false if scripted via setMove
 
         std::uint64_t statusBits = 0;
         std::int8_t artifact = 0;
-        std::int8_t blockReturn = 0;
+        std::int16_t blockReturn = 0;
         std::int8_t choked = 0;
-        std::int8_t corpseExplosion = 0;
+        std::int16_t corpseExplosion = 0;
         std::int8_t lockOn = 0;
         std::int16_t mark = 0;
-        std::int8_t metallicize = 0;
-        std::int8_t platedArmor = 0;
-        std::int8_t poison = 0;
-        std::int8_t regen = 0;
-        std::int8_t shackled = 0;
+        std::int16_t metallicize = 0;
+        std::int16_t platedArmor = 0;
+        int poison = 0; // Catalyst can go well past what 16 bits hold
+        std::int16_t regen = 0;
+        std::int16_t shackled = 0;
         int strength = 0;
         int vulnerable = 0;
         int weak = 0;
@@ -137,6 +138,7 @@ namespace sts {
         void attacked(BattleContext &bc, int damage);
         void damageUnblockedHelper(BattleContext &bc, int damage);
         void damage(BattleContext &bc, int damage);
+        void loseHp(BattleContext &bc, int amount); // DamageInfo with type HP_LOSS: poison and Choke
         void onHpLost(BattleContext &bc, int amount);
         void removeDebuffs();
 
@@ -155,6 +157,8 @@ namespace sts {
         [[nodiscard]] MMID getMoveForRoll(BattleContext &bc, int &monsterData, int roll) const;
 
         [[nodiscard]] int calculateDamageToPlayer(const BattleContext &bc, int baseDamage) const;
+        [[nodiscard]] int intentDamageToPlayer(const BattleContext &bc, int baseDamage) const;
+        [[nodiscard]] bool isBackAttack(const BattleContext &bc) const;
         void attackPlayerHelper(BattleContext &bc, int baseDamage, int times=1);
         void takeTurn(BattleContext &bc);
         [[nodiscard]] DamageInfo getMoveBaseDamage(const BattleContext &bc) const;

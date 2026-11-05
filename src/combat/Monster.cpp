@@ -22,7 +22,7 @@ void Monster::applyStartOfTurnPowers(BattleContext &bc) {
     }
 
     if (hasStatus<MS::CHOKED>()) {
-        setHasStatus<MS::CHOKED>(false);
+        removeStatus<MS::CHOKED>();
     }
 
     if (hasStatus<MS::FLIGHT>()) {
@@ -34,7 +34,7 @@ void Monster::applyStartOfTurnPowers(BattleContext &bc) {
     }
 
     if (hasStatus<MS::POISON>() && !bc.monsters.areMonstersBasicallyDead()) {
-        bc.addToBot(Actions::PoisonLoseHpAction());
+        bc.addToBot(Actions::PoisonLoseHpAction(idx, getStatus<MS::POISON>()));
     }
 }
 
@@ -281,7 +281,14 @@ void Monster::addBlock(int amount) {
 }
 
 void Monster::die(BattleContext &bc) {
+    if (id == MonsterId::MUGGER) {
+        bc.aiRng.random(2); // for a death sound in game
+    }
     --bc.monsters.monstersAlive;
+
+    // Awakened One and the Darklings run onDeath before they clear their powers.
+    const int corpseExplosionDamage = maxHp * getStatus<MS::CORPSE_EXPLOSION>();
+    const int poisonAtDeath = getStatus<MS::POISON>(); // relics' onMonsterDeath comes before those two clear their powers too
 
     if (id == MonsterId::AWAKENED_ONE && !miscInfo) { // is awakened one stage 1 // todo change to status
         halfDead = true;
@@ -296,6 +303,10 @@ void Monster::die(BattleContext &bc) {
         return;
     }
 
+    if (id == MonsterId::SPIRE_SHIELD || id == MonsterId::SPIRE_SPEAR) {
+        bc.player.removeStatus<PS::SURROUNDED>(); // the survivor no longer attacks from behind
+    }
+
     if (hasStatus<MS::SPORE_CLOUD>()) {
         // spore cloud always has a value of 2 in game
         bc.addToTop( Actions::DebuffPlayer<PS::VULNERABLE>(2, bc.turnHasEnded) );
@@ -303,15 +314,17 @@ void Monster::die(BattleContext &bc) {
     } else if (hasStatus<MS::REGROW>()) {
         resetAllStatusEffects();
         setMove(MMID::DARKLING_REGROW);
+        // Darkling.damage queues this too. A Darkling killed on its own turn, by Thorns, already has its RollMoveAction
+        // queued, and this one comes after it, so it still waits a full turn before it can revive.
+        bc.addToBot( Actions::SetMonsterMove(idx, MMID::DARKLING_REGROW) );
         halfDead = true;
 
     } else if (hasStatus<MS::STASIS>()) {
         returnStasisCard(bc);
     }
 
-    if (hasStatus<MS::CORPSE_EXPLOSION>()) {
-        int damage = maxHp * getStatus<MS::CORPSE_EXPLOSION>();
-        bc.addToBot( Actions::DamageAllEnemy(damage) );
+    if (corpseExplosionDamage > 0) {
+        bc.addToBot( Actions::DamageAllEnemy(corpseExplosionDamage) );
     }
 
     if (bc.player.hasRelic<RelicId::GREMLIN_HORN>()) {
@@ -319,8 +332,8 @@ void Monster::die(BattleContext &bc) {
         bc.addToBot( Actions::DrawCards(1) );
     }
 
-    if (bc.player.hasRelic<RelicId::THE_SPECIMEN>()) {
-        bc.addToBot( Actions::SetState(InputState::SELECT_ENEMY_THE_SPECIMEN_APPLY_POISON) );
+    if (bc.player.hasRelic<RelicId::THE_SPECIMEN>() && poisonAtDeath > 0) {
+        bc.addToBot( Actions::SpecimenAction(poisonAtDeath) );
     }
 }
 
@@ -341,6 +354,10 @@ void Monster::attackedUnblockedHelper(BattleContext &bc, int damage) { // todo, 
         damage = 5;
     }
 
+    if (hasStatus<MS::ANGRY>()) { // AngryPower.onAttacked needs damage past block
+        buff<MS::STRENGTH>(getStatus<MS::ANGRY>());
+    }
+
     if (bc.player.hasStatus<PS::ENVENOM>()) {
         bc.addToTop( Actions::DebuffEnemy<MS::POISON>(this->idx, bc.player.getStatus<PS::ENVENOM>()) );
     }
@@ -349,22 +366,15 @@ void Monster::attackedUnblockedHelper(BattleContext &bc, int damage) { // todo, 
         damage = std::min(damage, getStatus<MS::INVINCIBLE>());
         setStatus<MS::INVINCIBLE>(getStatus<MS::INVINCIBLE>() - damage);
 
-    } else if (hasStatus<MS::PLATED_ARMOR>()) {
-        decrementStatus<MS::PLATED_ARMOR>();
-        if(!hasStatus<MS::PLATED_ARMOR>() && id == MonsterId::SHELLED_PARASITE) {
-            setMove(MMID::SHELLED_PARASITE_STUNNED);
-        }
+    } else if (hasStatus<MS::PLATED_ARMOR>()) { // wasHPLost queues ReducePowerAction behind what's already queued
+        bc.addToBot( Actions::MonsterLosesPlatedArmor(idx) );
 
-    } else if (hasStatus<MS::CURL_UP>()) {
+    } else if (hasStatus<MS::CURL_UP>() && damage < curHp) { // CurlUpPower.onAttacked: not on a killing blow
         bc.addToBot(Actions::MonsterGainBlock(this->idx, getStatus<MS::CURL_UP>()) );
         setHasStatus<MS::CURL_UP>(false);
 
-    } else if (hasStatus<MS::FLIGHT>() && damage > 0) {
-        auto flight = getStatus<MS::FLIGHT>();
-        if (flight == 1) {
-            setMove(MMID::BYRD_STUNNED);
-        }
-        setStatus<MS::FLIGHT>(flight-1);
+    } else if (hasStatus<MS::FLIGHT>() && damage > 0) { // onAttacked queues ReducePowerAction behind what's already queued
+        bc.addToBot( Actions::MonsterLosesFlight(idx) );
 
     } else if (hasStatus<MS::MALLEABLE>() || hasStatus<MS::REACTIVE>()) {
         if (hasStatus<MS::MALLEABLE>()) {
@@ -381,9 +391,6 @@ void Monster::attackedUnblockedHelper(BattleContext &bc, int damage) { // todo, 
                 setStatus<MS::REACTIVE>(getStatus<MS::REACTIVE>()+1);
             }
         }
-
-    } else if (hasStatus<MS::THORNS>()) {
-        bc.addToTop( Actions::DamagePlayer(getStatus<MS::THORNS>()) );
 
     } else if (hasStatus<MS::ASLEEP>()) {
         // lagavulin
@@ -421,8 +428,14 @@ void Monster::attacked(BattleContext &bc, int damage) {
         }
     }
 
-    if (hasStatus<MS::ANGRY>()) { // onAttacked
-        buff<MS::STRENGTH>(getStatus<MS::ANGRY>());
+    // ThornsPower.onAttacked has no damage check: blocked hits and 0-damage attacks trigger it too.
+    if (hasStatus<MS::THORNS>()) {
+        bc.addToTop( Actions::DamagePlayer(getStatus<MS::THORNS>()) );
+    }
+
+    // BlockReturnPower.onAttacked has none either. The types it skips never come through here.
+    if (hasStatus<MS::BLOCK_RETURN>()) {
+        bc.addToTop( Actions::GainBlock(getStatus<MS::BLOCK_RETURN>()) );
     }
 
     const bool hadBlock = block > 0;
@@ -474,7 +487,7 @@ void Monster::damage(BattleContext &bc, int damage) {
         damage = 0;
     }
 
-    if (hasStatus<MS::INTANGIBLE>()) { // this is probably wrong with potions
+    if (hasStatus<MS::INTANGIBLE>()) { // Nemesis.damage does this to all damage, whatever its type
         if (damage > 0) {
             damage = 1;
         }
@@ -496,24 +509,40 @@ void Monster::damage(BattleContext &bc, int damage) {
     }
 }
 
+// AbstractMonster.damage with HP_LOSS: decrementBlock leaves block alone, and CurlUp, Malleable, Flight, Thorns and the like
+// all check for this type, so what's left is what any other damage goes through once it's past block. A monster's Intangible
+// only works through atDamageFinalReceive, which nothing calls on this DamageInfo, so Nemesis loses the full amount.
+void Monster::loseHp(BattleContext &bc, int amount) {
+    if (isDeadOrEscaped() || amount <= 0) {
+        return;
+    }
+    // Poison and Mark are a DamageInfo of type HP_LOSS, and Nemesis.damage takes those down to 1 as well.
+    damageUnblockedHelper(bc, hasStatus<MS::INTANGIBLE>() ? 1 : amount);
+}
+
 void Monster::onHpLost(BattleContext &bc, int amount) {
     const bool atOrBelowHalf = curHp <= maxHp/2;
     switch (id) {
+        // Each slime's damage() sets the split at once and also queues a SetMoveAction, so a RollMoveAction already in
+        // the queue (a slime hit by Thorns during its own turn) can't replace it.
         case MonsterId::ACID_SLIME_L:
-            if (atOrBelowHalf) {
+            if (atOrBelowHalf && moveHistory[0] != MMID::ACID_SLIME_L_SPLIT) {
                 moveHistory[0] = MMID::ACID_SLIME_L_SPLIT;
+                bc.addToBot(Actions::SetMonsterMove(idx, MMID::ACID_SLIME_L_SPLIT));
             }
             break;
 
         case MonsterId::SLIME_BOSS:
-            if (atOrBelowHalf) {
+            if (atOrBelowHalf && moveHistory[0] != MMID::SLIME_BOSS_SPLIT) {
                 moveHistory[0] = MMID::SLIME_BOSS_SPLIT;
+                bc.addToBot(Actions::SetMonsterMove(idx, MMID::SLIME_BOSS_SPLIT));
             }
             break;
 
         case MonsterId::SPIKE_SLIME_L:
-            if (atOrBelowHalf) {
+            if (atOrBelowHalf && moveHistory[0] != MMID::SPIKE_SLIME_L_SPLIT) {
                 moveHistory[0] = MMID::SPIKE_SLIME_L_SPLIT;
+                bc.addToBot(Actions::SetMonsterMove(idx, MMID::SPIKE_SLIME_L_SPLIT));
             }
             break;
 
@@ -523,7 +552,11 @@ void Monster::onHpLost(BattleContext &bc, int amount) {
                 if (newModeShiftAmount <= 0) {
                     removeStatus<MS::MODE_SHIFT>();
                     setMove(MMID::THE_GUARDIAN_DEFENSIVE_MODE);
-                    bc.addToBot( Actions::MonsterGainBlock(idx, 20) );
+                    // ChangeStateAction queues the block when it runs, which lands it behind a queued monster start of turn
+                    const int guardianIdx = idx;
+                    bc.addToBot( Action{[=] (BattleContext &b) {
+                        b.addToBot( Actions::MonsterGainBlock(guardianIdx, 20) );
+                    }} );
                 } else {
                     setStatus<MS::MODE_SHIFT>(newModeShiftAmount);
                 }
@@ -553,7 +586,22 @@ void Monster::removeDebuffs() {
 
 void Monster::resetAllStatusEffects() {
     statusBits = 0;
-    setStatus<MS::STRENGTH>(0);
+    artifact = 0;
+    blockReturn = 0;
+    choked = 0;
+    corpseExplosion = 0;
+    lockOn = 0;
+    mark = 0;
+    metallicize = 0;
+    platedArmor = 0;
+    poison = 0;
+    regen = 0;
+    shackled = 0;
+    strength = 0;
+    vulnerable = 0;
+    weak = 0;
+    uniquePower0 = 0;
+    uniquePower1 = 0;
     block = 0;
 }
 
@@ -561,13 +609,6 @@ void Monster::resetAllStatusEffects() {
 int Monster::calculateDamageToPlayer(const BattleContext &bc, int baseDamage) const {
     const auto &p = bc.player;
     auto damage = static_cast<float>(baseDamage + getStatus<MS::STRENGTH>());
-
-    if (p.hasStatus<PS::SURROUNDED>()) { // todo this is probably wrong
-        const bool facingSelf = p.lastTargetedMonster == idx || bc.monsters.arr[p.lastTargetedMonster].isDeadOrEscaped();
-        if (!facingSelf) {
-            damage *= 1.5;
-        }
-    }
 
     if (hasStatus<MS::WEAK>()) {
         if (p.hasRelic<RelicId::PAPER_KRANE>()) {
@@ -589,12 +630,42 @@ int Monster::calculateDamageToPlayer(const BattleContext &bc, int baseDamage) co
         damage *= 2;
     }
 
-    // apply backIdx attack for spire guard elites
-
     if (p.hasStatus<PS::INTANGIBLE>()) {
         damage = std::min(damage, static_cast<float>(1));
     }
 
+    int output = std::max(static_cast<int>(std::floor(damage)), 0);
+    if (isBackAttack(bc)) { // AbstractMonster.applyPowers multiplies DamageInfo's rounded output
+        output = static_cast<int>(static_cast<float>(output) * 1.5f);
+    }
+    return output;
+}
+
+bool Monster::isBackAttack(const BattleContext &bc) const {
+    const auto &p = bc.player;
+    return p.hasStatus<PS::SURROUNDED>() && p.lastTargetedMonster != idx && !bc.monsters.arr[p.lastTargetedMonster].isDeadOrEscaped();
+}
+
+int Monster::intentDamageToPlayer(const BattleContext &bc, int baseDamage) const {
+    if (!isBackAttack(bc)) {
+        return calculateDamageToPlayer(bc, baseDamage);
+    }
+    // calculateDamage multiplies the unrounded damage, so the intent can read 1 above what the attack deals.
+    const auto &p = bc.player;
+    auto damage = static_cast<float>(baseDamage + getStatus<MS::STRENGTH>());
+    if (hasStatus<MS::WEAK>()) {
+        damage *= p.hasRelic<RelicId::PAPER_KRANE>() ? 0.6f : 0.75f;
+    }
+    if (p.hasStatus<PS::VULNERABLE>()) {
+        damage *= p.hasRelic<RelicId::ODD_MUSHROOM>() ? 1.25f : 1.5f;
+    }
+    if (p.stance == Stance::WRATH) { // stance.atDamageReceive comes ahead of the back attack in calculateDamage
+        damage *= 2;
+    }
+    damage = static_cast<float>(static_cast<int>(damage * 1.5f));
+    if (p.hasStatus<PS::INTANGIBLE>()) {
+        damage = std::min(damage, static_cast<float>(1));
+    }
     return std::max(static_cast<int>(std::floor(damage)), 0);
 }
 
@@ -633,11 +704,13 @@ void Monster::rollMove(BattleContext &bc) {
 
     miscInfo = miscInfoCopy;
     setMove(move);
+    lastMoveWasRolled = true;
 }
 
 void Monster::setMove(MMID moveId) {
     moveHistory[1] = moveHistory[0];
     moveHistory[0] = moveId;
+    lastMoveWasRolled = false;
 }
 
 namespace sts {

@@ -2,15 +2,81 @@
 // Created by gamerpuppy on 7/4/2021.
 //
 
+#include <algorithm>
 #include <cassert>
 
 #include <constants/PlayerStatusEffects.h>
 #include <combat/BattleContext.h>
 #include <combat/Actions.h>
 #include "combat/Player.h"
+#include "game/Game.h"
 
 using namespace sts;
 
+namespace {
+
+// AbstractPower.priority, where a power changes it. ApplyPowerAction sorts the list by it each time one is added, and
+// the sort keeps the order gained among equals.
+int powerPriority(PlayerStatus s) {
+    constexpr int kDefaultPriority = 5;
+    switch (s) {
+        case PS::CONFUSED: return 0;
+        case PS::DOUBLE_DAMAGE:
+        case PS::PEN_NIB: return 6;
+        case PS::FRAIL: return 10;
+        case PS::DRAW_CARD_NEXT_TURN: return 20;
+        case PS::ESTABLISHMENT:
+        case PS::TOOLS_OF_THE_TRADE: return 25;
+        case PS::INTANGIBLE: return 75;
+        case PS::WEAK: return 99;
+        default: return kDefaultPriority;
+    }
+}
+
+struct StatusList {
+    std::array<PlayerStatus, 128> items{};
+    int count = 0;
+    void add(PlayerStatus s) { items[count++] = s; }
+    [[nodiscard]] auto begin() const { return items.begin(); }
+    [[nodiscard]] auto end() const { return items.begin() + count; }
+};
+
+// A Nightmare has no status, since each one is a power of its own, so it holds its place in the order with this.
+constexpr PlayerStatus kNightmareInOrder = PS::INVALID;
+
+// What's in statusMap, in the game's order. A status the order doesn't know about comes last.
+StatusList powersInGameOrder(const Player &p, bool withNightmares = false) {
+    StatusList list;
+    const auto ordered = p.powerOrder.begin() + p.powerOrderCount;
+    for (auto it = p.powerOrder.begin(); it != ordered; ++it) {
+        if (p.statusMap.count(*it) || (withNightmares && *it == kNightmareInOrder)) list.add(*it);
+    }
+    for (const auto &entry : p.statusMap) {
+        if (std::find(p.powerOrder.begin(), ordered, entry.first) == ordered) list.add(entry.first);
+    }
+    return list;
+}
+
+}  // namespace
+
+void Player::notePowerGained(PlayerStatus s) {
+    if (powerOrderCount >= kMaxOrderedPowers) return;
+    int at = powerOrderCount;
+    while (at > 0 && powerPriority(powerOrder[at - 1]) > powerPriority(s)) {
+        powerOrder[at] = powerOrder[at - 1];
+        --at;
+    }
+    powerOrder[at] = s;
+    ++powerOrderCount;
+}
+
+void Player::notePowerLost(PlayerStatus s) {
+    const auto end = powerOrder.begin() + powerOrderCount;
+    const auto it = std::find(powerOrder.begin(), end, s);
+    if (it == end) return;
+    std::move(it + 1, end, it);
+    --powerOrderCount;
+}
 
 bool Player::hasRelicRuntime(RelicId r) const {
     if ((int) r < 64) {
@@ -76,7 +142,11 @@ void Player::gainBlock(BattleContext &bc, int amount) {
         bc.addToBot(Actions::DamageRandomEnemy(getStatus<PS::JUGGERNAUT>()));
     }
 
-    // todo watcher weak power
+    if (hasStatus<PS::WAVE_OF_THE_HAND>()) {
+        for (int i = 0; i < bc.monsters.monsterCount; ++i) {
+            bc.addToBot(Actions::DebuffEnemy<MS::WEAK>(i, getStatus<PS::WAVE_OF_THE_HAND>(), false));
+        }
+    }
 }
 
 void Player::gainGold(BattleContext &bc, int amount) {
@@ -106,16 +176,164 @@ void Player::gainEnergy(int amount) {
     energy += amount;
 }
 
+// IncreaseMaxOrbAction calls increaseMaxOrbSlots once per slot, and that does nothing at exactly 10.
 void Player::increaseOrbSlots(int amount) {
-    // todo
+    for (int i = 0; i < amount && orbSlots != MAX_ORB_SLOTS; ++i) {
+        ++orbSlots;
+    }
 }
 
-void Player::channelOrb(Orb orb) {
-    // todo
+// decreaseMaxOrbSlots removes the last slot, whatever it holds.
+void Player::decreaseOrbSlots(int amount) {
+    for (int i = 0; i < amount && orbSlots > 0; ++i) {
+        --orbSlots;
+        orbs[orbSlots] = Orb::EMPTY;
+        darkOrbEvoke[orbSlots] = 0;
+    }
+}
+
+void Player::channelOrb(BattleContext &bc, Orb orb, int darkEvoke) {
+    if (orbSlots <= 0) {
+        return;
+    }
+
+    for (int i = 0; i < orbSlots; ++i) {
+        if (orbs[i] == Orb::EMPTY) {
+            orbs[i] = orb;
+            darkOrbEvoke[i] = static_cast<std::int16_t>(darkEvoke);
+            if (orb == Orb::LIGHTNING) {
+                ++lightningChanneled;
+            } else if (orb == Orb::FROST) {
+                ++frostChanneled;
+            }
+            return;
+        }
+    }
+
+    // Full: AbstractPlayer.channelOrb queues the evoke and then the same channel on top.
+    bc.addToTop( Actions::ChannelOrb(orb, darkEvoke) );
+    bc.addToTop( Actions::EvokeOrb() );
+}
+
+void Player::evokeOrb(BattleContext &bc) {
+    if (!hasOrb()) {
+        return;
+    }
+    evokeWithoutLosingOrb(bc);
+    removeNextOrb();
+}
+
+void Player::evokeWithoutLosingOrb(BattleContext &bc) {
+    if (!hasOrb()) {
+        return;
+    }
+
+    const int amount = orbEvokeAmount(0);
+    switch (orbs[0]) {
+        case Orb::LIGHTNING:
+            bc.addToTop( Actions::LightningOrbDamage(amount, hasStatus<PS::ELECTRO>()) );
+            break;
+
+        case Orb::FROST:
+            bc.addToTop( Actions::GainBlock(amount) );
+            break;
+
+        case Orb::DARK: {
+            // DarkOrbEvokeAction's constructor takes the first monster with the lowest HP.
+            int target = -1;
+            for (int i = 0; i < bc.monsters.monsterCount; ++i) {
+                const auto &m = bc.monsters.arr[i];
+                if (!m.isDeadOrEscaped() && (target == -1 || m.curHp < bc.monsters.arr[target].curHp)) {
+                    target = i;
+                }
+            }
+            if (target != -1) {
+                bc.addToTop( Actions::DarkOrbDamage(target, amount) );
+            }
+            break;
+        }
+
+        case Orb::PLASMA:
+            bc.addToTop( Actions::GainEnergy(amount) );
+            break;
+
+        default:
+            break;
+    }
+}
+
+void Player::removeNextOrb() {
+    if (!hasOrb()) {
+        return;
+    }
+    for (int i = 1; i < orbSlots; ++i) {
+        orbs[i-1] = orbs[i];
+        darkOrbEvoke[i-1] = darkOrbEvoke[i];
+    }
+    orbs[orbSlots-1] = Orb::EMPTY;
+    darkOrbEvoke[orbSlots-1] = 0;
+}
+
+void Player::orbOnStartOfTurn(BattleContext &bc, int slot) {
+    if (orbs[slot] == Orb::PLASMA) {
+        bc.addToBot( Actions::GainEnergy(orbPassiveAmount(slot)) );
+    }
+}
+
+void Player::orbOnEndOfTurn(BattleContext &bc, int slot) {
+    switch (orbs[slot]) {
+        case Orb::LIGHTNING:
+            bc.addToBot( Actions::LightningOrbDamage(orbPassiveAmount(slot), hasStatus<PS::ELECTRO>()) );
+            break;
+
+        case Orb::FROST:
+            bc.addToBot( Actions::GainBlock(orbPassiveAmount(slot)) );
+            break;
+
+        case Orb::DARK:
+            darkOrbEvoke[slot] = static_cast<std::int16_t>(darkOrbEvoke[slot] + orbPassiveAmount(slot));
+            break;
+
+        default:
+            break;
+    }
 }
 
 bool Player::hasEmptyOrb() const {
-    return false;
+    return orbSlots > 0 && orbs[orbSlots-1] == Orb::EMPTY;
+}
+
+bool Player::hasOrb() const {
+    return orbSlots > 0 && orbs[0] != Orb::EMPTY;
+}
+
+int Player::filledOrbCount() const {
+    int count = 0;
+    while (count < orbSlots && orbs[count] != Orb::EMPTY) {
+        ++count;
+    }
+    return count;
+}
+
+// AbstractOrb.applyFocus and Dark's override. Focus changes reach every orb at once, so these can be worked out when read.
+int Player::orbPassiveAmount(int slot) const {
+    switch (orbs[slot]) {
+        case Orb::LIGHTNING: return std::max(0, 3 + focus);
+        case Orb::FROST: return std::max(0, 2 + focus);
+        case Orb::DARK: return std::max(0, 6 + focus);
+        case Orb::PLASMA: return 1;
+        default: return 0;
+    }
+}
+
+int Player::orbEvokeAmount(int slot) const {
+    switch (orbs[slot]) {
+        case Orb::LIGHTNING: return std::max(0, 8 + focus);
+        case Orb::FROST: return std::max(0, 5 + focus);
+        case Orb::DARK: return darkOrbEvoke[slot];
+        case Orb::PLASMA: return 2;
+        default: return 0;
+    }
 }
 
 void Player::removeDebuffs() {
@@ -124,6 +342,9 @@ void Player::removeDebuffs() {
     }
     if (getStatus<PS::DEXTERITY>() < 0) {
         setStatusValueNoChecks<PS::DEXTERITY>(0);
+    }
+    if (focus < 0) {
+        focus = 0;
     }
 
     removeStatus<PS::BIAS>();
@@ -159,15 +380,14 @@ void Player::heal(int amount) {
     }
 
     if (hasRelic<RelicId::MAGIC_FLOWER>()) {
-        amount = amount * 3 / 2;
+        amount = (amount * 3 + 1) / 2;  // MathUtils.round(amount * 1.5f)
     }
-
-    bool wasBloodied = curHp <= maxHp/2;
 
     curHp = std::min(static_cast<int>(maxHp), curHp + amount);
 
-    if (wasBloodied && curHp > maxHp/2 && hasRelic<RelicId::RED_SKULL>()) {
-        debuff<PS::STRENGTH>(3);
+    if (curHp > maxHp/2 && redSkullActive) {
+        debuff<PS::STRENGTH>(-3, false);
+        redSkullActive = false;
     }
 }
 
@@ -232,6 +452,13 @@ void Player::attacked(BattleContext &bc, int enemyIdx, int calculatedDamage) {
         bc.addToTop( Actions::DamageEnemy(enemyIdx, getStatus<PS::FLAME_BARRIER>()) );
     }
 
+    // StaticDischargePower.onAttacked sees the damage after block and Buffer, before Torii and Tungsten Rod.
+    if (damage > 0 && hasStatus<PS::STATIC_DISCHARGE>()) {
+        for (int i = 0; i < getStatus<PS::STATIC_DISCHARGE>(); ++i) {
+            bc.addToTop( Actions::ChannelOrb(Orb::LIGHTNING) );
+        }
+    }
+
     if (damage > 0 && damage <=5 && hasRelic<RelicId::TORII>()) {
         damage = 1;
     }
@@ -261,6 +488,12 @@ void Player::attacked(BattleContext &bc, int enemyIdx, int calculatedDamage) {
 void Player::loseHp(BattleContext &bc, int amount, bool selfDamage) {
     if (hasStatus<PS::INTANGIBLE>()) {
         amount = 1;
+    }
+
+    // HP loss skips block, but BufferPower.onAttackedToChangeDamage still stops it.
+    if (amount > 0 && hasStatus<PS::BUFFER>()) {
+        decrementStatus<PS::BUFFER>();
+        return;
     }
 
     if (amount > 0 && hasRelic<RelicId::TUNGSTEN_ROD>()) {
@@ -297,7 +530,7 @@ void Player::hpWasLost(BattleContext &bc, int amount, bool selfDamage) {
     }
 
     if (hasRelic<RelicId::EMOTION_CHIP>()) {
-        // todo
+        emotionChipPulse = true;
     }
 
     if (hasRelic<RelicId::SELF_FORMING_CLAY>()) {
@@ -308,8 +541,9 @@ void Player::hpWasLost(BattleContext &bc, int amount, bool selfDamage) {
         bc.addToTop( Actions::DrawCards(1) );
     }
 
-    if (hasRelic<RelicId::RED_SKULL>() && !wasBloodied && curHp <= maxHp/2) {
+    if (hasRelic<RelicId::RED_SKULL>() && !redSkullActive && curHp <= maxHp/2) {
         buff<PS::STRENGTH>(3);
+        redSkullActive = true;
     }
 
     bc.cards.onTookDamage();
@@ -346,7 +580,24 @@ void Player::wouldDie(BattleContext &bc) {
     bc.outcome = Outcome::PLAYER_LOSS;
 }
 
+void Player::addNightmare(const CardInstance &c) {
+    if (nightmareCount < MAX_NIGHTMARES) {
+        nightmareCards[nightmareCount] = c;
+        nightmareCards[nightmareCount].setCostForTurn(c.cost); // NightmarePower runs resetAttributes on its copy
+        ++nightmareCount;
+        notePowerGained(kNightmareInOrder);
+    }
+}
+
 void Player::applyEndOfTurnPowers(BattleContext &bc) {
+    // Powers trigger in the order they were gained. This pair shows: Combust's HP loss draws (Runic Cube, Centennial
+    // Puzzle) only if No Draw has already gone.
+    const bool noDrawGoesFirst = noDrawBeforeCombust && hasStatus<PS::NO_DRAW>();
+    noDrawBeforeCombust = false;
+    if (noDrawGoesFirst) {
+        bc.addToBot(Actions::RemoveStatus<PS::NO_DRAW>());
+    }
+
     if (bomb1) {
         bc.addToBot( Actions::DamageAllEnemy(bomb1) );
     }
@@ -354,10 +605,11 @@ void Player::applyEndOfTurnPowers(BattleContext &bc) {
     bomb2 = bomb3;
     bomb3 = 0;
 
-    for (auto pair : statusMap) {
-        if (!hasStatusRuntime(pair.first)) {
+    for (const PlayerStatus status : powersInGameOrder(*this)) {
+        if (!hasStatusRuntime(status)) {
             continue;
         }
+        const std::pair<PlayerStatus, std::int16_t> pair{status, statusMap.at(status)};
 
         switch (pair.first) {
             case PS::BURST:
@@ -375,6 +627,10 @@ void Player::applyEndOfTurnPowers(BattleContext &bc) {
                 bc.addToBot(Actions::DamagePlayer(pair.second));
                 break;
 
+            case PS::AMPLIFY:
+                bc.addToBot(Actions::RemoveStatus<PS::AMPLIFY>());
+                break;
+
             case PS::DOUBLE_TAP:
                 bc.addToBot(Actions::RemoveStatus<PS::DOUBLE_TAP>());
                 break;
@@ -388,7 +644,11 @@ void Player::applyEndOfTurnPowers(BattleContext &bc) {
                 break;
 
             case PS::ESTABLISHMENT:
-                // todo addToBot establishmentPowerAction
+                bc.addToBot(Actions::EstablishmentAction(pair.second));
+                break;
+
+            case PS::STUDY:
+                bc.addToBot(Actions::MakeTempCardInDrawPile(CardInstance(CardId::INSIGHT), pair.second, true));
                 break;
 
             case PS::LOSE_DEXTERITY:
@@ -399,10 +659,6 @@ void Player::applyEndOfTurnPowers(BattleContext &bc) {
             case PS::LOSE_STRENGTH:
                 bc.addToBot(Actions::DebuffPlayer<PS::STRENGTH>(-pair.second));
                 bc.addToBot(Actions::RemoveStatus<PS::LOSE_STRENGTH>());
-                break;
-
-            case PS::NO_DRAW:
-                bc.addToBot(Actions::RemoveStatus<PS::NO_DRAW>());
                 break;
 
             case PS::OMEGA:
@@ -422,20 +678,28 @@ void Player::applyEndOfTurnPowers(BattleContext &bc) {
                 bc.addToTop(Actions::DecrementStatus<PS::REGEN>());
                 break;
 
-                //case RetainCardPower -> if not has relic runic pyramid and not has power equilibrium, addToBot retain cards action
+            case PS::RETAIN_CARDS:
+                if (bc.cards.cardsInHand > 0 && !hasRelic<R::RUNIC_PYRAMID>() && !hasStatus<PS::EQUILIBRIUM>()) {
+                    bc.addToBot( Actions::RetainCardsAction(pair.second) );
+                }
+                break;
 
             case PS::RITUAL:
                 bc.addToBot(Actions::BuffPlayer<PS::STRENGTH>(pair.second));
                 break;
                 // case TheBomb
 
-            case PS::WRAITH_FORM: // todo does this debuff or just decrement?
-                bc.addToBot(Actions::DecrementStatus<PS::DEXTERITY>(pair.second));
+            case PS::WRAITH_FORM: // an ApplyPowerAction with a negative DexterityPower, so Artifact stops it
+                bc.addToBot(Actions::DebuffPlayer<PS::DEXTERITY>(pair.second, false));
                 break;
 
             default:
                 break;
         }
+    }
+
+    if (hasStatus<PS::NO_DRAW>() && !noDrawGoesFirst) {
+        bc.addToBot(Actions::RemoveStatus<PS::NO_DRAW>());
     }
 }
 
@@ -482,8 +746,8 @@ void Player::applyAtEndOfRoundPowers() {
         decrementStatus<PS::NO_BLOCK>();
     }
 
-    if (hasStatus<PS::WAVE_OF_THE_HAND>()) {
-        decrementStatus<PS::WAVE_OF_THE_HAND>();
+    if (hasStatus<PS::WAVE_OF_THE_HAND>()) { // the whole power goes, not one of its stacks
+        removeStatus<PS::WAVE_OF_THE_HAND>();
     }
 }
 
@@ -511,12 +775,12 @@ void Player::applyStartOfTurnRelics(BattleContext &bc) {
     }
 
     if (hasRelic<R::DAMARU>()) {
-        bc.addToBot( Actions::BuffPlayer<PS::MANTRA>(1) );
-        // todo handle mantra change stance
+        bc.queueMantra(1);
     }
 
-    if (hasRelic<R::EMOTION_CHIP>()) {
-        // todo if lost hp last turn addToBot(new ImpulseAction())
+    if (hasRelic<R::EMOTION_CHIP>() && emotionChipPulse) {
+        emotionChipPulse = false;
+        bc.addToBot( Actions::ImpulseAction() );
     }
 
     if (hasRelic<R::HAPPY_FLOWER>()) {
@@ -530,6 +794,10 @@ void Player::applyStartOfTurnRelics(BattleContext &bc) {
         if (bc.turn == 1) {
             bc.addToBot( Actions::GainBlock(14) );
         }
+    }
+
+    if (hasRelic<R::HOVERING_KITE>()) {
+        kiteTriggeredThisTurn = false;
     }
 
     if (hasRelic<R::INCENSE_BURNER>()) {
@@ -564,67 +832,95 @@ void Player::applyStartOfTurnRelics(BattleContext &bc) {
 
 void Player::applyStartOfTurnPowers(BattleContext &bc) {
     // ****** Player powers atStartOfTurn ******
-    for (auto pair : statusMap) {
-        if (!hasStatusRuntime(pair.first)) {
+    int nightmaresDone = 0;
+    const auto nextNightmare = [&]() { // MakeTempCardInHandAction makes a stat equivalent copy of the power's card
+        bc.addToBot( Actions::MakeTempCardInHand(nightmareCards[nightmaresDone++], NIGHTMARE_COPIES) );
+    };
+    for (const PlayerStatus status : powersInGameOrder(*this, true)) {
+        if (status == kNightmareInOrder) {
+            nextNightmare();
             continue;
         }
+        if (!hasStatusRuntime(status)) {
+            continue;
+        }
+        const std::pair<PlayerStatus, std::int16_t> pair{status, statusMap.at(status)};
 
         switch (pair.first) {
             case PS::BATTLE_HYMN:
-                bc.addToBot(Actions::MakeTempCardInHand(CardId::SMITE, hasStatus<PS::MASTER_REALITY>(), pair.second) );
+                if (!bc.monsters.areMonstersBasicallyDead()) {
+                    bc.addToBot(Actions::MakeTempCardInHand(CardId::SMITE, false, pair.second) );
+                }
                 break;
 
-            case PS::BIAS:
-                bc.addToBot( Actions::DecrementStatus<PS::FOCUS>(pair.second) );
+            case PS::BIAS: // an ApplyPowerAction with a negative FocusPower, so Artifact stops it
+                bc.addToBot( Actions::DebuffPlayer<PS::FOCUS>(-pair.second, false) );
                 break;
 
-            case PS::CREATIVE_AI:
-//                bc.addToBot( Actions::SetState(InputState::CREATE_RANDOM_CARD_IN_HAND_POWER, pair.second) ); // todo
+            case PS::CREATIVE_AI: // The game's combat pools stay the class's own, with or without Prismatic Shard.
+                for (int i = 0; i < pair.second; ++i) {
+                    bc.addToBot( Actions::MakeTempCardInHand(getTrulyRandomCardInCombat(bc.cardRandomRng, cc, CardType::POWER)) );
+                }
                 break;
 
             case PS::ECHO_FORM:
                 echoFormCardsDoubled = 0;
                 break;
 
-            case PS::BLASPHEMER:
+            case PS::BLASPHEMER: // HP loss: Intangible holds it to 1 and Buffer stops it, and the power goes anyway
                 removeStatus<PS::BLASPHEMER>();
-                bc.addToBot( Actions::PlayerLoseHp(9999) );
+                bc.addToBot( Actions::PlayerLoseHp(99999, true) );
                 break;
 
-            case PS::FASTING:
-                //  add energy dont need? just change energy per turn instead
+            case PS::FASTING: // the game's EnergyDownPower. The energy for the turn has been set by the time this runs.
+                bc.addToBot( Actions::LoseEnergy(pair.second) );
                 break;
 
             case PS::FORESIGHT:
-                if (bc.cards.drawPile.empty()) {
-                    bc.addToTop( Actions::SetState(InputState::SHUFFLE_DISCARD_TO_DRAW) );
+                if (bc.cards.drawPile.empty()) { // EmptyDeckShuffleAction's constructor runs the relics' onShuffle
+                    bc.onShuffle();
+                    bc.addToTop( Actions::EmptyDeckShuffle() );
                 }
-//                bc.addToBot( Actions::SetState(InputState::SCRY, pair.second) ); // tood
+                bc.addToBot( Actions::ScryAction(pair.second) );
                 break;
 
             case PS::FLAME_BARRIER:
                 removeStatus<PS::FLAME_BARRIER>();
                 break;
 
-            case PS::HELLO_WORLD: // todo
-                removeStatus<PS::HELLO_WORLD>();
+            case PS::HELLO_WORLD:
+                if (!bc.monsters.areMonstersBasicallyDead()) {
+                    for (int i = 0; i < pair.second; ++i) {
+                        bc.addToBot( Actions::MakeTempCardInHand(getRandomClassCardOfRarity(bc.cardRandomRng, cc, CardRarity::COMMON)) );
+                    }
+                }
                 break;
 
             case PS::INFINITE_BLADES:
-                bc.addToBot(Actions::MakeTempCardInHand(CardId::SHIV, hasStatus<PS::MASTER_REALITY>(), pair.second) );
+                if (!bc.monsters.areMonstersBasicallyDead()) {
+                    bc.addToBot(Actions::MakeTempCardInHand(CardId::SHIV, hasStatus<PS::MASTER_REALITY>(), pair.second) );
+                }
                 break;
 
             case PS::LOOP:
-                // todo do amount times : call orb[0].onStartOfTurn, orb[0].onEndOfTurn
+                if (orbSlots > 0) {
+                    for (int i = 0; i < pair.second; ++i) {
+                        orbOnStartOfTurn(bc, 0);
+                        orbOnEndOfTurn(bc, 0);
+                    }
+                }
                 break;
 
             case PS::MAGNETISM:
-//                bc.addToBot( Actions::SetState(InputState::CREATE_RANDOM_CARD_IN_HAND_COLORLESS, pair.second) );
+                for (int i = 0; i < pair.second; ++i) {
+                    bc.addToBot( Actions::MakeTempCardInHand(sts::getTrulyRandomColorlessCardInCombat(bc.cardRandomRng)) );
+                }
                 break;
 
             case PS::MAYHEM:
+                // MayhemPower queues an action that queues PlayTopCardAction, so the card is played after the turn's draw.
                 for (int i = 0; i < pair.second; i++) {
-                    bc.addToBot( Actions::PlayTopCard(bc.monsters.getRandomMonsterIdx(bc.cardRandomRng), false) ); // todo fix target
+                    bc.addToBot( Actions::PlayTopCardDelayed() );
                 }
                 break;
 
@@ -656,6 +952,14 @@ void Player::applyStartOfTurnPowers(BattleContext &bc) {
         }
 
     }
+
+    while (nightmaresDone < nightmareCount) { // the order was full when it came
+        nextNightmare();
+    }
+    for (int i = 0; i < nightmareCount; ++i) {
+        notePowerLost(kNightmareInOrder);
+    }
+    nightmareCount = 0;
 }
 
 void Player::applyStartOfTurnPostDrawRelics(BattleContext &bc) {
@@ -673,23 +977,28 @@ void Player::applyStartOfTurnPostDrawRelics(BattleContext &bc) {
 
 void Player::applyStartOfTurnPostDrawPowers(BattleContext &bc) {
     // ****** Player Powers AtStartOfTurnPostDraw ******
-    for (auto pair :statusMap) {
-        if (!hasStatusRuntime(pair.first)) {
+    for (const PlayerStatus status : powersInGameOrder(*this)) {
+        if (!hasStatusRuntime(status)) {
             continue;
         }
+        const std::pair<PlayerStatus, std::int16_t> pair{status, statusMap.at(status)};
 
         switch (pair.first) {
             case PS::BRUTALITY:
-                bc.addToBot( Actions::PlayerLoseHp(pair.second) );
                 bc.addToBot( Actions::DrawCards(pair.second) );
+                bc.addToBot( Actions::PlayerLoseHp(pair.second, true) );
                 break;
 
             case PS::DEMON_FORM:
                 bc.addToBot( Actions::BuffPlayer<PS::STRENGTH>(pair.second) );
                 break;
 
-            case PS::DEVOTION: // the implementation of this is really weird in the game code
-                bc.addToBot( Actions::BuffPlayer<PS::MANTRA>(pair.second) ); // todo make buffing mantra switch stance
+            case PS::DEVOTION: // with no Mantra yet and 10 or more to give, it goes straight to Divinity and gives no Mantra
+                if (!hasStatus<PS::MANTRA>() && pair.second >= 10) {
+                    bc.addToBot( Actions::ChangeStance(Stance::DIVINITY) );
+                } else {
+                    bc.queueMantra(pair.second);
+                }
                 break;
 
             case PS::DRAW_CARD_NEXT_TURN:
@@ -703,7 +1012,7 @@ void Player::applyStartOfTurnPostDrawPowers(BattleContext &bc) {
 
             case PS::TOOLS_OF_THE_TRADE:
                 bc.addToBot( Actions::DrawCards(pair.second) );
-//                bc.addToBot( Actions::SetState(InputState::CHOOSE_DISCARD_CARDS, pair.second) );
+                bc.addToBot( Actions::DiscardAction(pair.second) );
                 break;
 
             default:
@@ -722,7 +1031,7 @@ void Player::rechargeEnergy(BattleContext &bc) {
     // ****** Player powers onEnergyRecharge ******
     if (hasStatus<PS::COLLECT>()) {
         decrementStatus<PS::COLLECT>();
-        bc.addToBot(Actions::MakeTempCardInHand(CardId::MIRACLE) );
+        bc.addToBot(Actions::MakeTempCardInHand(CardId::MIRACLE, true) );
     }
 
     if (hasStatus<PS::DEVA>()) {
@@ -733,6 +1042,11 @@ void Player::rechargeEnergy(BattleContext &bc) {
     if (hasStatus<PS::ENERGIZED>()) {
         gainEnergy(getStatus<PS::ENERGIZED>());
         removeStatus<PS::ENERGIZED>();
+    }
+
+    if (hasStatus<PS::ENERGIZED_BLUE>()) {
+        gainEnergy(getStatus<PS::ENERGIZED_BLUE>());
+        removeStatus<PS::ENERGIZED_BLUE>();
     }
 }
 
@@ -872,6 +1186,15 @@ namespace sts {
         os << "\t" << "hp:(" << p.curHp << "/" << p.maxHp << ")"
             << " energy:(" << p.energy << "/" << static_cast<int>(p.energyPerTurn)
         << ") block:(" << p.block << ")\n";
+
+        if (p.orbSlots > 0) {
+            static constexpr const char* const orbNames[] {"-", "Dark", "Frost", "Plasma", "Lightning"};
+            os << "\t" << "orbs: {";
+            for (int i = 0; i < p.orbSlots; ++i) {
+                os << orbNames[static_cast<int>(p.orbs[i])] << "(" << p.orbPassiveAmount(i) << "," << p.orbEvokeAmount(i) << ") ";
+            }
+            os << "}\n";
+        }
 
         printStatusEffects(os, p);
         printRelics(os, p);

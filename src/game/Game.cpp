@@ -7,7 +7,9 @@
 #include "game/Game.h"
 
 #include <algorithm>
+#include <array>
 #include <cassert>
+#include <vector>
 
 using namespace sts;
 
@@ -26,12 +28,15 @@ void RelicContainer::remove(RelicId r) {
     }
 }
 
+// A new relic that replaces another takes its slot (the order decides which relic triggers first). r may already be
+// at the end of the list when this is called.
 void RelicContainer::replaceRelic(RelicId o, RelicId r) {
     setHasRelic(o, false);
     setHasRelic(r, true);
+    relics.erase(std::remove_if(relics.begin(), relics.end(), [=](const RelicInstance &relic) { return relic.id == r; }), relics.end());
     for (auto & relic : relics) {
-        if (relic.id == r) {
-            relic.id = r;
+        if (relic.id == o) {
+            relic = RelicInstance{r, 0};
             break;
         }
     }
@@ -183,13 +188,22 @@ CardId sts::getRandomCurse(Random &cardRng) {
     return curseCardPool[idx];
 }
 
-CardId sts::getRandomCurse(Random &rng, CardId exclude) {
-    int idx = rng.random(curseCardPoolSize-2);
-    if (curseCardPool[idx] == exclude) {
-        return curseCardPool[idx+1];
-    } else {
-        return curseCardPool[idx];
+CardId sts::randomCardExcept(Random &rng, const CardId *pool, int poolSize, CardId exclude) {
+    // The game builds a list that leaves the card out, so everything after it moves up one.
+    int excludeIdx = poolSize;
+    for (int i = 0; i < poolSize; ++i) {
+        if (pool[i] == exclude) {
+            excludeIdx = i;
+            break;
+        }
     }
+    const int listSize = excludeIdx < poolSize ? poolSize-1 : poolSize;
+    const int idx = rng.random(listSize-1);
+    return pool[idx < excludeIdx ? idx : idx+1];
+}
+
+CardId sts::getRandomCurse(Random &rng, CardId exclude) {
+    return randomCardExcept(rng, curseCardPool, curseCardPoolSize, exclude);
 }
 
 CardId sts::getTrulyRandomCard(Random &cardRandomRng, CharacterClass cc) {
@@ -198,12 +212,7 @@ CardId sts::getTrulyRandomCard(Random &cardRandomRng, CharacterClass cc) {
 }
 
 CardId sts::returnTrulyRandomColorlessCardFromAvailable(Random &rng, CardId exclude) {
-    int idx = rng.random(srcColorlessCardPoolSize-2);
-    if (srcColorlessCardPool[idx] == exclude) {
-        return srcColorlessCardPool[idx + 1];
-    } else {
-        return srcColorlessCardPool[idx];
-    }
+    return randomCardExcept(rng, srcColorlessCardPool, srcColorlessCardPoolSize, exclude);
 }
 
 CardId sts::getTrulyRandomColorlessCardInCombat(Random &cardRandomRng) {
@@ -212,16 +221,64 @@ CardId sts::getTrulyRandomColorlessCardInCombat(Random &cardRandomRng) {
     return CombatColorlessCardPool::getCardAt(idx);
 }
 
+namespace {
+
+// AbstractDungeon.returnTrulyRandomCardInCombat: the class's common, uncommon and rare pools in turn, leaving out cards
+// tagged HEALING. It reads the src pools, which initializeCardPools fills with addToBottom, so each is in reverse order.
+bool isHealingCard(CardId id) {
+    switch (id) {
+        case CardId::ALCHEMIZE:
+        case CardId::FEED:
+        case CardId::LESSON_LEARNED:
+        case CardId::REAPER:
+        case CardId::SELF_REPAIR:
+        case CardId::WISH:
+            return true;
+        default:
+            return false;
+    }
+}
+
+struct CombatPool {
+    std::vector<CardId> all;
+    std::vector<CardId> attacks;
+    std::vector<CardId> skills;
+    std::vector<CardId> powers;
+};
+
+CombatPool buildCombatPool(CharacterClass cc) {
+    CombatPool pool;
+    for (const CardRarity rarity : {CardRarity::COMMON, CardRarity::UNCOMMON, CardRarity::RARE}) {
+        for (int i = RarityCardPool::getPoolSize(cc, rarity) - 1; i >= 0; --i) {
+            const CardId id = RarityCardPool::getCardFromPool(cc, rarity, i);
+            if (isHealingCard(id)) continue;
+            pool.all.push_back(id);
+            const CardType type = getCardType(id);
+            if (type == CardType::ATTACK) pool.attacks.push_back(id);
+            else if (type == CardType::SKILL) pool.skills.push_back(id);
+            else if (type == CardType::POWER) pool.powers.push_back(id);
+        }
+    }
+    return pool;
+}
+
+const CombatPool &combatPool(CharacterClass cc) {
+    static const std::array<CombatPool, 4> pools{buildCombatPool(CharacterClass::IRONCLAD), buildCombatPool(CharacterClass::SILENT),
+                                                 buildCombatPool(CharacterClass::DEFECT), buildCombatPool(CharacterClass::WATCHER)};
+    return pools[static_cast<int>(cc)];
+}
+
+}  // namespace
+
 CardId sts::getTrulyRandomCardInCombat(Random &cardRandomRng, CharacterClass cc) {
-    const auto poolSize = CombatCardPool::getPoolSize(cc);
-    const auto idx = cardRandomRng.random(poolSize-1);
-    return CombatCardPool::getCardAt(cc, idx);
+    const auto &pool = combatPool(cc).all;
+    return pool[cardRandomRng.random(static_cast<int>(pool.size()) - 1)];
 }
 
 CardId sts::getTrulyRandomCardInCombat(Random &cardRandomRng, const CharacterClass cc, const CardType type) {
-    const auto poolSize = CombatTypeCardPool::getPoolSize(cc, type);
-    const auto idx = cardRandomRng.random(poolSize-1);
-    return CombatTypeCardPool::getCardAt(cc, type, idx);
+    const CombatPool &pools = combatPool(cc);
+    const auto &pool = type == CardType::ATTACK ? pools.attacks : type == CardType::SKILL ? pools.skills : pools.powers;
+    return pool[cardRandomRng.random(static_cast<int>(pool.size()) - 1)];
 }
 
 // using hacky arguments: status = colorless cards, invalid = any type

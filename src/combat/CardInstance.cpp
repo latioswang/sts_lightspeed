@@ -11,6 +11,9 @@ using namespace sts;
 CardInstance::CardInstance(CardId id, bool upgraded) : id(id), upgraded(upgraded) {
     cost = getEnergyCost(id, upgraded);
     costForTurn = cost;
+    if (id == CardId::GENETIC_ALGORITHM) {
+        specialData = 1; // its misc, which starts at 1
+    }
 }
 
 CardInstance::CardInstance(const Card &card) : CardInstance(card.getId(), card.isUpgraded()) {
@@ -18,6 +21,11 @@ CardInstance::CardInstance(const Card &card) : CardInstance(card.getId(), card.i
         specialData = card.getUpgraded();
     } else {
         specialData = card.misc;
+    }
+    if (id == CardId::FORCE_FIELD && card.misc > 0) {
+        // misc holds the discount it was made with, see Deck::obtain
+        updateCost(-card.misc);
+        specialData = 0;
     }
 }
 
@@ -90,8 +98,14 @@ bool CardInstance::usesSpecialData() const {
     switch (getId()) {
         case CardId::SEARING_BLOW:
         case CardId::RAMPAGE:
+        case CardId::CLAW:
         case CardId::GENETIC_ALGORITHM:
+        case CardId::GLASS_KNIFE:
         case CardId::RITUAL_DAGGER:
+        case CardId::STEAM_BARRIER:
+        case CardId::EXPUNGER: // how many times it hits
+        case CardId::PERSEVERANCE: // block gained from being retained
+        case CardId::WINDMILL_STRIKE: // damage gained from being retained
             return true;
 
         default:
@@ -114,6 +128,16 @@ void CardInstance::updateCost(int amount) {
     if (tmpCost != cost) {
         cost = static_cast<int8_t>(tmpCost);
         costForTurn = static_cast<int8_t>(std::max(0, static_cast<int>(cost)-diff));
+    }
+}
+
+void CardInstance::modifyCostForCombat(int amount) {
+    if (costForTurn > 0) {
+        costForTurn = static_cast<int8_t>(std::max(0, costForTurn + amount));
+        cost = costForTurn;
+    } else if (cost >= 0) {
+        cost = static_cast<int8_t>(std::max(0, cost + amount));
+        costForTurn = 0;
     }
 }
 
@@ -145,11 +169,12 @@ void CardInstance::upgrade() {
             ++specialData;
             break;
 
-        case CardId::BLOOD_FOR_BLOOD: // the game upgrades the cost to 3 if the cost is over 4 but would it ever be higher?
-            if (!isUpgraded() && cost < 4 && cost > 0) {
-                upgradeBaseCost(cost-1);
+        case CardId::BLOOD_FOR_BLOOD: // upgrading lowers its current cost by 1, or sets it to 3 from 4 or more
+            if (!isUpgraded()) {
+                upgradeBaseCost(cost < 4 ? std::max(cost - 1, 0) : 3);
+                upgraded = true;
             }
-            break;
+            return;
 
         case CardId::BLIND:
         case CardId::TRIP:
@@ -164,11 +189,16 @@ void CardInstance::upgrade() {
     }
     if (!isUpgraded()) {
         upgraded = true;
-        // TODO(dmz) is this logic right?
         int newcost = getEnergyCost(id, true);
         if (getEnergyCost(id, false) != newcost) {
-            cost = costForTurn = newcost;
+            upgradeBaseCost(newcost);
         }
+    }
+}
+
+void CardInstance::tookDamageTimes(int times) {
+    for (int i = 0; i < times && isBloodCard(); ++i) {
+        tookDamage();
     }
 }
 
@@ -276,7 +306,8 @@ bool CardInstance::canUseOnAnyTarget(const BattleContext &bc) const {
 }
 
 bool CardInstance::canUse(const BattleContext &bc, int target, const bool inAutoplay) const {
-    if (this->requiresTarget() && (bc.monsters.areMonstersBasicallyDead() || !bc.monsters.arr[target].isTargetable())) {
+    // no target: a random pick found nothing, which happens with only a half dead Awakened One left
+    if (this->requiresTarget() && (target < 0 || bc.monsters.areMonstersBasicallyDead() || !bc.monsters.arr[target].isTargetable())) {
         return false;
     }
 
@@ -295,10 +326,24 @@ bool CardInstance::canUse(const BattleContext &bc, int target, const bool inAuto
             if (getId() == CardId::CLASH && !canUseClash(bc)) {
                 return false;
             }
+            if (getId() == CardId::GRAND_FINALE && !bc.cards.drawPile.empty()) {
+                return false;
+            }
+            if (getId() == CardId::SIGNATURE_MOVE) { // no other Attack in hand
+                for (int i = 0; i < bc.cards.cardsInHand; ++i) {
+                    const auto &other = bc.cards.hand[i];
+                    if (other.getType() == CardType::ATTACK && other.getUniqueId() != uniqueId) {
+                        return false;
+                    }
+                }
+            }
             break;
 
         case CardType::SKILL:
-            if (id == CardId::SECRET_TECHNIQUE) {
+            if (id == CardId::REFLEX || id == CardId::TACTICIAN || id == CardId::DEUS_EX_MACHINA) {
+                return false;
+
+            } else if (id == CardId::SECRET_TECHNIQUE) {
                 const bool haveSkill = std::find_if(
                         bc.cards.drawPile.begin(),
                         bc.cards.drawPile.end(),
@@ -320,7 +365,7 @@ bool CardInstance::canUse(const BattleContext &bc, int target, const bool inAuto
             break;
 
         case CardType::CURSE:
-            if (!bc.player.hasRelic<RelicId::BLUE_CANDLE>()) {
+            if (!bc.player.hasRelic<RelicId::BLUE_CANDLE>() && id != CardId::PRIDE) {
                 return false;
             }
             break;

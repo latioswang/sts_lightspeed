@@ -5,6 +5,7 @@
 #ifndef STS_LIGHTSPEED_ACTIONS_H
 #define STS_LIGHTSPEED_ACTIONS_H
 
+#include "constants/MonsterMoves.h"
 #include <utility>
 #include <functional>
 #include <cstdint>
@@ -85,6 +86,9 @@ namespace sts {
 
         static Action ShuffleTempCardIntoDrawPile(CardId id, int count=1);
 
+        static Action BurnIncrease();
+        static Action PlayTopCardDelayed();
+        static Action SetMonsterMove(int monsterIdx, MonsterMoveId move);
         static Action PlayTopCard(int monsterTargetIdx, bool exhausts);
         static Action MakeTempCardInHand(CardId card, bool upgraded= false, int amount = 1);
         static Action MakeTempCardInHand(CardInstance c, int amount = 1);
@@ -104,6 +108,106 @@ namespace sts {
         static Action MonsterStartTurnAction();
         static Action TriggerEndOfTurnOrbsAction();
 
+        // ************ Orbs ************
+
+        static Action ChannelOrb(Orb orb, int darkEvoke=6, bool autoEvoke=true); // ChannelAction; without autoEvoke it needs a free slot
+        static Action ChannelOrbs(Orb orb, int count); // that many ChannelActions, without filling the queue (Tempest)
+        static Action EvokeOrb(); // EvokeOrbAction
+        static Action EvokeWithoutRemovingOrb();
+        static Action EvokeAllOrbs();
+        static Action RemoveAllOrbs();
+        static Action LightningOrbDamage(int amount, bool hitAll); // LightningOrbEvokeAction and LightningOrbPassiveAction
+        static Action DarkOrbDamage(int targetIdx, int amount);
+        static Action DarkImpulseAction(); // Darkness+
+        static Action DecreaseOrbSlots(int count);
+
+        // ************ Other Defect cards ************
+
+        static Action AllCostToHandAction(int cost); // All For One
+        static Action DiscardToHandAction(std::int16_t uniqueId);
+        static Action AttackRandomEnemy(int baseDamage, int count); // Thunder Strike, Rip and Tear
+        static Action BarrageAction(int targetIdx, int damage);
+        static Action CompileDriverAction(int cardsPerOrb);
+        static Action ForTheEyesAction(int targetIdx, int weak);
+        static Action MonsterLosesFlight(int idx);
+        static Action MonsterLosesPlatedArmor(int idx);
+        static Action FissionAction(bool upgraded);
+        static Action FtlAction(int targetIdx, int damage, int cardPlayCount);
+        static Action GashAction(int amount); // Claw
+        static Action GainBlockTimes(int amount, int count);
+        static Action IncreaseMiscAction(std::int16_t uniqueId, int amount); // Genetic Algorithm
+        static Action ModifyBlockAction(std::int16_t uniqueId); // Steam Barrier
+        static Action MulticastAction(int energy, bool upgraded, bool useEnergy);
+        static Action MulticastEvoke(int remaining);
+        static Action RebootShuffleAll();
+        static Action RecursionAction();
+        static Action RecycleAction();
+        static Action ReduceCostAction(std::int16_t uniqueId); // Streamline
+        static Action ReinforcedBodyAction(int block, int energy, bool useEnergy);
+        static Action RemoveAllBlock(int targetIdx); // Melter
+        static Action ScrapeAction(int amount);
+        static Action SeekAction(int count);
+        static Action SunderAction(int targetIdx, int damage, int energy);
+        static Action TempestAction(int energy, bool upgraded, bool useEnergy);
+
+        // ************ Silent cards ************
+
+        static Action AttackEnemyTimes(int idx, int damage, int count); // that many DamageActions, without filling the queue
+        static Action MonsterLoseHp(int idx, int amount); // LoseHPAction: Choke
+        static Action DiscardAction(int amount, bool isRandom=false, int flyingFrom=-1); // DiscardAction, hand select and all
+        static Action DiscardSpecificCard(std::int16_t uniqueId); // DiscardSpecificCardAction
+        static Action BaneAction(int idx, int damage);
+        static Action BouncingFlaskAction(int idx, int poison, int times);
+        static Action BulletTimeAction(); // ApplyBulletTimeAction
+        static Action CalculatedGambleAction();
+        static Action CatalystAction(int idx, int multiplier); // DoublePoisonAction and TriplePoisonAction
+        static Action DoppelgangerAction(int energy, bool upgraded, bool useEnergy);
+        static Action EscapePlanDraw(int block); // DrawCardAction(1, EscapePlanAction)
+        static Action ExpertiseAction(int handSize);
+        static Action FinisherAction(int idx, int damage); // DamagePerAttackPlayedAction
+        static Action FlechetteAction(int idx, int damage);
+        static Action GainEnergyIfDiscard(int amount);
+        static Action GlassKnifeAction(std::int16_t uniqueId); // ModifyDamageAction
+        static Action HeelHookAction(int idx, int damage);
+        static Action MalaiseAction(int idx, int energy, bool upgraded, bool useEnergy);
+        static Action NightmareAction();
+        static Action ObtainPotion(Potion potion); // ObtainPotionAction
+        static Action RetainCardsAction(int amount, int alreadySelected=0);
+        static Action SetupAction();
+        static Action SkewerAction(int idx, int damage, int energy, bool useEnergy);
+        static Action StormOfSteelAction(bool upgraded); // BladeFuryAction
+        static Action UnloadAction();
+
+        // ************ Watcher cards ************
+
+        static Action ApplyMantra(int amount); // ApplyPowerAction with a MantraPower made earlier
+        static Action ScryAction(int amount);
+        static Action PressEndTurnButton(); // PressEndTurnButtonAction
+        static Action SkipEnemiesTurn(); // SkipEnemiesTurnAction
+        static Action LoseEnergy(int amount); // LoseEnergyAction
+        static Action CollectAction(int effect, bool useEnergy);
+        static Action ConjureBladeAction(int effect, bool useEnergy);
+        static Action CrushJointsAction(int idx, int amount);
+        static Action DevaFormAction();
+        static Action EndTurnDeathAction(); // ApplyPowerAction with an EndTurnDeathPower, which doesn't stack
+        static Action EstablishmentAction(int amount); // EstablishmentPowerAction
+        static Action FearNoEvilAction(int idx, int damage);
+        static Action FollowUpAction();
+        static Action ForeignInfluenceAction(bool upgraded);
+        static Action HaltAction(int block, int additional);
+        static Action HeadStompAction(int idx, int amount); // Sash Whip
+        static Action IndignationAction(int amount);
+        static Action InnerPeaceAction(int amount);
+        static Action JudgementAction(int idx, int cutoff);
+        static Action LessonLearnedAction(int idx, int damage);
+        static Action MeditateAction(int count);
+        static Action OmniscienceAction(int playCount);
+        static Action SanctityAction(int draw);
+        static Action TriggerMarksAction();
+        static Action WallopAction(int idx, int damage);
+        static Action WishAction(bool upgraded); // ChooseOneAction
+        static Action ChooseStanceAction(); // ChooseOneAction with ChooseWrath and ChooseCalm: Stance Potion
+
         static Action ExhaustTopCardInHand();
         static Action ExhaustSpecificCardInHand(int idx, std::int16_t uniqueId);
 
@@ -116,7 +220,7 @@ namespace sts {
         static Action SpawnTorchHeads();
         static Action SpireShieldDebuff(); // only called if player has orb slots
 
-        static Action ExhaustRandomCardInHand(int count);
+        static Action ExhaustRandomCardInHand(int count, bool anyNumber=false);
         static Action MadnessAction();
         static Action RandomizeHandCost();
         static Action UpgradeRandomCardAction(); // Warped Tongs Relic
@@ -131,7 +235,6 @@ namespace sts {
         static Action PutRandomCardsInDrawPile(CardType type, int count); // used by chrysalis and metamorphosis
         static Action DiscoveryAction(CardType type, int amount); // attack potion, skill potion
         static Action InfernalBladeAction();
-        static Action JackOfAllTradesAction(bool upgraded);
         static Action TransmutationAction(bool upgraded, int energy, bool useEnergy);
         static Action ViolenceAction(int count);
 
@@ -155,13 +258,15 @@ namespace sts {
 
         static Action SuicideAction(int monsterIdx, bool triggerRelics);
 
-        static Action PoisonLoseHpAction();
+        static Action PoisonLoseHpAction(int idx, int amount);
         static Action RemovePlayerDebuffs(); // Orange Pellets Relic
 
         static Action DualityAction(); // Duality Relic
+        static Action ImpulseAction(); // Emotion Chip Relic
+        static Action SpecimenAction(int poison); // The Specimen Relic: ApplyPowerToRandomEnemyAction
 
         static Action ApotheosisAction();
-        static Action DropkickAction(int targetIdx);
+        static Action DropkickAction(int targetIdx, int damage);
         static Action EnlightenmentAction(bool upgraded);
         static Action EntrenchAction();
         static Action FeedAction(int idx, int damage, bool upgraded);

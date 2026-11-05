@@ -59,21 +59,20 @@ DamageInfo Monster::getMoveBaseDamage(const BattleContext &bc) const {
         case MonsterMoveId::DAGGER_STAB:                    return {9};
         case MonsterMoveId::DAGGER_EXPLODE:                 return {25};
 
-        case MonsterMoveId::DARKLING_NIP:                   return {miscInfo + (asc2 ? 2 : 0)};
-        case MonsterMoveId::DARKLING_CHOMP:                 return {asc2 ? 9 : 8};
+        case MonsterMoveId::DARKLING_NIP:                   return {miscInfo};
+        case MonsterMoveId::DARKLING_CHOMP:                 return {asc2 ? 9 : 8, 2};
 
         case MonsterMoveId::DECA_BEAM:                      return {asc4 ? 12 : 10, 2};
         case MonsterMoveId::DONU_BEAM:                      return {asc4 ? 12 : 10, 2};
 
         case MonsterMoveId::EXPLODER_SLAM:                  return {asc2 ? 11 : 9};
-        case MonsterMoveId::EXPLODER_EXPLODE:               return {30}; // todo should this be classified as move damage?
 
         case MonsterMoveId::FAT_GREMLIN_SMASH:              return {asc2 ? 5 : 4};
         case MonsterMoveId::FUNGI_BEAST_BITE:               return {6};
 
         case MonsterMoveId::GIANT_HEAD_COUNT:               return {13};
         case MonsterMoveId::GIANT_HEAD_IT_IS_TIME: {
-            const auto t = std::min(bc.getMonsterTurnNumber()-5, 6) * 5;
+            const auto t = std::min(bc.getMonsterTurnNumber() - (bc.ascension >= 18 ? 4 : 5), 6) * 5;
             const auto damage = (asc3 ? 40 : 30) + t;
             return {damage};
         }
@@ -197,6 +196,7 @@ DamageInfo Monster::getMoveBaseDamage(const BattleContext &bc) const {
         case MonsterMoveId::WRITHING_MASS_FLAIL:            return {asc2 ? 16 : 15};
         case MonsterMoveId::WRITHING_MASS_MULTI_STRIKE:     return {asc2 ? 9 : 7, 3};
         case MonsterMoveId::WRITHING_MASS_STRONG_STRIKE:    return {asc2 ? 38 : 32};
+        case MonsterMoveId::WRITHING_MASS_WITHER:           return {asc2 ? 12 : 10};
 
         default:
             return {0,0};

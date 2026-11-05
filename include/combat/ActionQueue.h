@@ -69,9 +69,10 @@ namespace sts {
 
     template <int capacity>
     void ActionQueue<capacity>::pushFront(Action a) {
-#ifdef sts_asserts
-        assert(size != capacity);
-#endif
+        // Only a huge X cost fills the queue (Multi-Cast at 100 energy with Juggernaut). Dropping an action beats writing over one.
+        if (size >= capacity) {
+            return;
+        }
         --front;
         ++size;
         if (front < 0) {
@@ -83,11 +84,9 @@ namespace sts {
 
     template<int capacity>
     void ActionQueue<capacity>::pushBack(Action a) {
-#ifdef sts_asserts
         if (size >= capacity) {
-            assert(false);
+            return;
         }
-#endif
         if (back >= capacity) {
             back = 0;
         }

@@ -7,6 +7,7 @@
 
 #include "sts_common.h"
 
+#include <functional>
 #include <iostream>
 #include <vector>
 
@@ -53,6 +54,10 @@ namespace sts::search {
         static int getValidEventSelectBits(const sts::GameContext &gc);
 
     };
+
+    // research: sees every out-of-combat action before it runs, on any GameContext (the real-game bridge
+    // mirrors them to the game). Empty outside the bridge.
+    extern std::function<void(const sts::GameContext &, const GameAction &)> gameActionObserver;
 
 
 

@@ -113,6 +113,7 @@ void CardManager::createTempCardInDiscard(CardInstance c) {
     notifyAddCardToCombat(c);
     notifyAddToDiscardPile(c);
     discardPile.push_back(c);
+    discardPile.back().setCostForTurn(c.cost); // Soul.update runs clearPowers when the card lands
 }
 
 void CardManager::createTempCardInHand(CardInstance c) {
@@ -210,6 +211,7 @@ void CardManager::moveToDrawPileTop(const CardInstance &c) {
 #endif
     notifyAddToDrawPile(c);
     drawPile.push_back(c);
+    drawPile.back().setCostForTurn(c.cost); // so does a card landing on the draw pile
 }
 
 void CardManager::shuffleIntoDrawPile(Random &cardRandomRng, const CardInstance &c) {
@@ -233,6 +235,7 @@ void CardManager::moveToDiscardPile(const CardInstance &c) {
 #endif
     notifyAddToDiscardPile(c);
     discardPile.push_back(c);
+    discardPile.back().setCostForTurn(c.cost); // Soul.update runs clearPowers when the card lands
 }
 
 void CardManager::moveDiscardPileIntoToDrawPile() {
@@ -400,6 +403,16 @@ void CardManager::draw(BattleContext &bc, int amount) {
     for (int i = 0; i < amount; i++) {
         auto c = popFromDrawPile();
 
+        // triggerWhenDrawn comes before the hand and before Confusion's onCardDraw.
+        if (c.getId() == CardId::EVISCERATE) {
+            c.setCostForTurn(c.cost - bc.player.cardsDiscardedThisTurn);
+        } else if (c.getId() == CardId::ENDLESS_AGONY) {
+            bc.addToTop( Actions::MakeTempCardInHand(c) );
+        } else if (c.getId() == CardId::DEUS_EX_MACHINA) {
+            bc.addToTop( Actions::MakeTempCardInHand(CardId::MIRACLE, false, c.isUpgraded() ? 3 : 2) );
+            bc.addToTop( Actions::ExhaustSpecificCardInHand(cardsInHand, c.getUniqueId()) );
+        }
+
         if (bc.player.hasStatus<PS::CONFUSED>()) {
             if (c.cost >= 0) {  // todo status and curses affected by this?
                 const auto newCost = static_cast<std::int8_t>(bc.cardRandomRng.random(3));
@@ -443,6 +456,20 @@ void CardManager::draw(BattleContext &bc, int amount) {
         }
     }
 
+    onCardDrawOrDiscard(bc);
+}
+
+void CardManager::onCardDrawOrDiscard(const BattleContext &bc) {
+    // AbstractPlayer.onCardDrawOrDiscard: skills in hand with another cost, from another turn or Snecko Oil, go back to 0.
+    if (bc.player.hasStatus<PS::CORRUPTION>()) {
+        for (int i = 0; i < cardsInHand; ++i) {
+            auto &c = hand[i];
+            if (c.getType() == CardType::SKILL && c.costForTurn != 0 && (c.costForTurn > 0 || c.cost >= 0)) {
+                c.cost = 0; // modifyCostForCombat, so it stays free after the turn
+                c.costForTurn = 0;
+            }
+        }
+    }
 }
 
 void CardManager::onTookDamage() {

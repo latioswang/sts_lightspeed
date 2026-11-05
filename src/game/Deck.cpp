@@ -39,7 +39,7 @@ bool Deck::isCardBottled(int idx) const {
 }
 
 bool Deck::anyCardBottled() const {
-    return bottleIdxs[0] == -1 || bottleIdxs[1] == -1 || bottleIdxs[2] == -1;
+    return bottleIdxs[0] != -1 || bottleIdxs[1] != -1 || bottleIdxs[2] != -1;
 }
 
 int Deck::getUpgradeableCount() const {
@@ -119,8 +119,13 @@ void Deck::transformRandomCards(Random &miscRng, int count) {
     // todo
 }
 
-void Deck::obtain(GameContext &gc, Card card, int count) {
+void Deck::obtain(GameContext &gc, Card card, int count, bool omamoriCanStop) {
     const auto type = card.getType();
+
+    // A new Force Field is made cheaper by the Power cards played in the last fight, and keeps that for good.
+    if (card.getId() == CardId::FORCE_FIELD && card.misc == 0) {
+        card.misc = gc.powersPlayedLastCombat;
+    }
 
     switch (type) {
         case CardType::ATTACK:
@@ -154,7 +159,7 @@ void Deck::obtain(GameContext &gc, Card card, int count) {
             break;
 
         case CardType::CURSE:
-            if (gc.relics.has(RelicId::OMAMORI)) {
+            if (omamoriCanStop && gc.relics.has(RelicId::OMAMORI)) {
                 int &omamoriCount = gc.relics.getRelicValueRef(RelicId::OMAMORI);
                 if (omamoriCount > 0) {
                     int decAmt = std::min(count, omamoriCount);
@@ -169,6 +174,9 @@ void Deck::obtain(GameContext &gc, Card card, int count) {
             if (card.canTransform()) {
                 transformableCount += count;
                 cardTypeCounts[static_cast<int>(CardType::CURSE)] += count;
+            }
+            if (gc.relics.has(RelicId::DARKSTONE_PERIAPT)) {
+                gc.playerIncreaseMaxHp(6 * count);
             }
             break;
 
@@ -191,8 +199,6 @@ void Deck::obtain(GameContext &gc, Card card, int count) {
 
 void Deck::obtainRaw(Card card) {
     cards.push_back(card);
-    ++transformableCount;
-    ++cardTypeCounts[static_cast<int>(card.getType())];
 
     switch (card.getType()) {
         case CardType::ATTACK:
@@ -242,6 +248,15 @@ void Deck::remove(GameContext &gc, int idx) {
             gc.loseMaxHp(3);
         }
         cards.remove(idx);
+        // a bottled card further along moves down with the list
+        for (int i = 0; i < 3; ++i) {
+            if (bottleIdxs[i] > idx) {
+                --bottleIdxs[i];
+            }
+        }
+        if (c.getId() == CardId::NECRONOMICURSE) { // onRemoveFromMasterDeck puts a new one in the deck
+            cards.push_back(Card(CardId::NECRONOMICURSE));
+        }
         return;
     }
 
@@ -294,7 +309,7 @@ void Deck::removeSelected(GameContext &gc, const fixed_list<SelectScreenCard, 3>
     std::sort(removeIdx, removeIdx+selectList.size());
 
     for (int i = selectList.size() - 1; i >= 0; --i) {
-        remove(gc, selectList[i].deckIdx);
+        remove(gc, removeIdx[i]);
     }
 }
 

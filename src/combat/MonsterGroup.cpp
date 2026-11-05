@@ -11,7 +11,14 @@
 using namespace sts;
 
 bool MonsterGroup::areMonstersBasicallyDead() const {
-    return monstersAlive <= 0;
+    for (int i = 0; i < monsterCount; ++i) {
+        const Monster &m = arr[i];
+        // a half dead monster's hp is 0, but in game it isn't dying
+        if ((!m.isDying() || m.isHalfDead()) && !m.isEscaping()) {
+            return false;
+        }
+    }
+    return true;
 }
 
 int MonsterGroup::getTargetableCount() const {
@@ -276,7 +283,7 @@ void MonsterGroup::createMonsters(BattleContext &bc, MonsterEncounter encounter)
             createMonster(bc, MonsterId::JAW_WORM);
 
             const auto strBuff = bc.ascension >= 17 ? 5 : (bc.ascension >= 2 ? 4 : 3);
-            const auto blockBuff = bc.ascension >= 17 ? 9 : (bc.ascension >= 2 ? 6 : 5);
+            const auto blockBuff = bc.ascension >= 17 ? 9 : 6;
             for (int i = 0; i < 3; ++i) {
                 auto &m = bc.monsters.arr[i];
                 m.buff<MS::STRENGTH>(strBuff);
@@ -604,7 +611,7 @@ void MonsterGroup::applyEmeraldEliteBuff(BattleContext &bc, const int buffType, 
 
         switch (buffType) {
             case 0:
-                m.buff<MS::STRENGTH>(act);
+                m.buff<MS::STRENGTH>(act + 1);
                 break;
 
             case 1: {

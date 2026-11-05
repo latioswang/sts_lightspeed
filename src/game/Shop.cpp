@@ -15,7 +15,7 @@ void Shop::setup(GameContext &gc) {
     setupPotions(gc);
 
     if (gc.ascension >= 16) {
-        applyDiscount(0.80f);
+        applyDiscount(1.10f);
     }
     if (gc.hasRelic(RelicId::THE_COURIER)) {
         applyDiscount(0.80f);
@@ -30,19 +30,19 @@ void Shop::setupCards(GameContext &gc) {
     CardRarity rarities[5];
 
     rarities[0] = rollCardRarityShop(gc.cardRng, gc.cardRarityFactor);
-    cards[0] = getRandomClassCardOfTypeAndRarity(gc.cardRng, gc.cc, CardType::ATTACK, rarities[0]);
+    cards[0] = gc.previewObtainCard(getRandomClassCardOfTypeAndRarity(gc.cardRng, gc.cc, CardType::ATTACK, rarities[0]));
     assignRandomCardExcluding(gc, CardType::ATTACK, cards[0].id, cards[1], rarities[1]);
 
     rarities[2] = rollCardRarityShop(gc.cardRng, gc.cardRarityFactor);
-    cards[2] = getRandomClassCardOfTypeAndRarity(gc.cardRng, gc.cc, CardType::SKILL, rarities[2]);
+    cards[2] = gc.previewObtainCard(getRandomClassCardOfTypeAndRarity(gc.cardRng, gc.cc, CardType::SKILL, rarities[2]));
     assignRandomCardExcluding(gc, CardType::SKILL, cards[2].id, cards[3], rarities[3]);
 
     rarities[4] = rollCardRarityShop(gc.cardRng, gc.cardRarityFactor);
     rarities[4] = rarities[4] == CardRarity::COMMON ? CardRarity::UNCOMMON : rarities[4];
-    cards[4] = getRandomClassCardOfTypeAndRarity(gc.cardRng, gc.cc, CardType::POWER, rarities[4]);
+    cards[4] = gc.previewObtainCard(getRandomClassCardOfTypeAndRarity(gc.cardRng, gc.cc, CardType::POWER, rarities[4]));
 
-    cards[5] = getColorlessCardFromPool(gc.cardRng, CardRarity::UNCOMMON);
-    cards[6] = getColorlessCardFromPool(gc.cardRng, CardRarity::RARE);
+    cards[5] = gc.previewObtainCard(getColorlessCardFromPool(gc.cardRng, CardRarity::UNCOMMON));
+    cards[6] = gc.previewObtainCard(getColorlessCardFromPool(gc.cardRng, CardRarity::RARE));
 
     for (int i = 0; i < 5; ++i) {
 
@@ -84,6 +84,7 @@ void Shop::applyDiscount(float factor) {
 }
 
 void Shop::buyCard(GameContext &gc, int idx) {
+    const CardType type = cards[idx].getType();
     gc.deck.obtain(gc, cards[idx], 1);
     gc.loseGold(cardPrice(idx), true);
 
@@ -95,8 +96,13 @@ void Shop::buyCard(GameContext &gc, int idx) {
             cards[idx] = gc.previewObtainCard(getColorlessCardFromPool(gc.cardRng, rarity));
             cardPrice(idx) = getNewCardPrice(gc, rarity, true);
         } else {
-            CardRarity rarity = gc.rollCardRarity(Room::SHOP);
-            cards[idx] = gc.previewObtainCard(getRandomClassCardOfRarity(gc.mathUtilRng, gc.cc, rarity));
+            // The game draws the new card with its unseeded MathUtils, so the card itself can't be predicted. Its type,
+            // rarity and price can. There are no common Powers, so the pool falls back to uncommon.
+            CardRarity rarity = rollCardRarityShop(gc.cardRng, gc.cardRarityFactor);
+            if (type == CardType::POWER && rarity == CardRarity::COMMON) {
+                rarity = CardRarity::UNCOMMON;
+            }
+            cards[idx] = gc.previewObtainCard(getRandomClassCardOfTypeAndRarity(gc.mathUtilRng, gc.cc, type, rarity));
             cardPrice(idx) = getNewCardPrice(gc, rarity, false);
         }
 
@@ -109,7 +115,9 @@ void Shop::buyRelic(GameContext &gc, int idx) {
     const RelicId r = relics[idx];
 
     bool openedScreen = gc.obtainRelic(r);
-    if (openedScreen) {
+    // A relic's reward screen (Orrery, Cauldron) leaves the shop: its Proceed button opens the map, and the map's Return
+    // only goes back to the reward screen. A card selection screen returns to the shop.
+    if (openedScreen && gc.screenState != ScreenState::REWARDS) {
         gc.regainControlAction = [](GameContext &gc) {
             gc.screenState = ScreenState::SHOP_ROOM;
             gc.regainControlAction = [] (auto &gc) {
@@ -124,15 +132,18 @@ void Shop::buyRelic(GameContext &gc, int idx) {
         applyDiscount(MEMBERSHIP_CARD_FACTOR);
         removeCost = static_cast<int>(std::round(static_cast<float>(removeCost) * MEMBERSHIP_CARD_FACTOR));
     }
+    if ((r == RelicId::SMILING_MASK || gc.hasRelic(RelicId::SMILING_MASK)) && removeCost != -1) {
+        removeCost = SMILING_MASK_PRICE;
+    }
 
     if (gc.hasRelic(RelicId::THE_COURIER)) {
         relics[idx] = gc.returnRandomRelic(rollRelicTier(gc.merchantRng), true, false);
-        getNewPrice(gc, getRelicBasePrice(relics[idx]));
+        relicPrice(idx) = getNewPrice(gc, getRelicBasePrice(relics[idx]));
     } else {
         relicPrice(idx) = -1;
     }
 
-    if (isEggRelic(relics[idx])) {
+    if (isEggRelic(r)) {
         for (auto &c : cards) {
             c = gc.previewObtainCard(c);
         }
@@ -198,27 +209,27 @@ int Shop::getNewCardPrice(GameContext &gc, CardRarity rarity, bool colorless) {
     if (gc.hasRelic(RelicId::THE_COURIER)) {
         price *= 0.8f;
     }
-    if (gc.hasRelic(RelicId::THE_COURIER)) {
+    if (gc.hasRelic(RelicId::MEMBERSHIP_CARD)) {
         price *= 0.5f;
     }
     return static_cast<int>(price);
 }
 
 int Shop::getNewPrice(GameContext &gc, int basePrice) {
-    basePrice = static_cast<int>(std::round(gc.merchantRng.random(0.95f, 1.05f)));
+    int price = static_cast<int>(std::round(static_cast<float>(basePrice) * gc.merchantRng.random(0.95f, 1.05f)));
     if (gc.hasRelic(RelicId::THE_COURIER)) {
-        std::round(basePrice * COURIER_FACTOR);
+        price = static_cast<int>(std::round(static_cast<float>(price) * COURIER_FACTOR));
     }
     if (gc.hasRelic(RelicId::MEMBERSHIP_CARD)) {
-        std::round(basePrice * MEMBERSHIP_CARD_FACTOR);
+        price = static_cast<int>(std::round(static_cast<float>(price) * MEMBERSHIP_CARD_FACTOR));
     }
-    return basePrice;
+    return price;
 }
 
 int Shop::getRemoveCost(const GameContext &gc) {
     int cost;
     if (gc.hasRelic(RelicId::SMILING_MASK)) {
-        cost = SMILING_MASK_PRICE;
+        return SMILING_MASK_PRICE; // ShopScreen.applyDiscount leaves it at this price under every discount
     } else {
         cost = BASE_REMOVE_PRICE+(REMOVE_PRICE_INCREASE*gc.shopRemoveCount);
     }

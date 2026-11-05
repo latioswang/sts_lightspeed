@@ -59,9 +59,11 @@ GameContext::GameContext(CharacterClass cc, std::uint64_t seed, int ascension)
                                        EventPools::oneTimeEventsAsc15.end());
     }
 
+    masterMaxOrbs = cc == CharacterClass::DEFECT ? 3 : 0;
     generateMonsters();
     initRelics();
     initPlayer();
+    miscRng.random(1); // MainMusic picks the act's song, and Neow's rewards can use this stream
 
     potionCapacity = ascension < 11 ? 3 : 2;
     std::fill(potions.begin(), potions.end(), Potion::EMPTY_POTION_SLOT);
@@ -334,9 +336,13 @@ bool GameContext::relicCanSpawn(RelicId relic, bool shopRoom) const {
         case RelicId::SHOVEL:
             return floorNum < 48 && hasLessThanTwoCampfireRelics();
 
+        case RelicId::ECTOPLASM:
+            return act <= 1;
+
         case RelicId::MAW_BANK:
         case RelicId::OLD_COIN:
         case RelicId::SMILING_MASK:
+        case RelicId::THE_COURIER:
             return floorNum <= 48 && !shopRoom;
 
         case RelicId::ANCIENT_TEA_SET:
@@ -354,7 +360,6 @@ bool GameContext::relicCanSpawn(RelicId relic, bool shopRoom) const {
         case RelicId::QUESTION_CARD:
         case RelicId::REGAL_PILLOW:
         case RelicId::SINGING_BOWL:
-        case RelicId::THE_COURIER:
         case RelicId::TOXIC_EGG:
             return floorNum <= 48;
 
@@ -631,75 +636,50 @@ void GameContext::populateMonsterList(const MonsterEncounter monsters[], const f
     }
 }
 
+// generateExclusions in Exordium, TheCity and TheBeyond: the first strong encounter can't repeat the last weak one's theme.
+static bool isFirstStrongEnemyExcluded(MonsterEncounter lastWeak, MonsterEncounter strong) {
+    switch (lastWeak) {
+        case MonsterEncounter::TWO_LOUSE:
+            return strong == MonsterEncounter::THREE_LOUSE;
+        case MonsterEncounter::SMALL_SLIMES:
+            return strong == MonsterEncounter::LARGE_SLIME || strong == MonsterEncounter::LOTS_OF_SLIMES;
+        case MonsterEncounter::SPHERIC_GUARDIAN:
+            return strong == MonsterEncounter::SENTRY_AND_SPHERE;
+        case MonsterEncounter::THREE_BYRDS:
+            return strong == MonsterEncounter::CHOSEN_AND_BYRDS;
+        case MonsterEncounter::CHOSEN:
+            return strong == MonsterEncounter::CHOSEN_AND_BYRDS || strong == MonsterEncounter::CULTIST_AND_CHOSEN;
+        case MonsterEncounter::THREE_DARKLINGS:
+            return strong == MonsterEncounter::THREE_DARKLINGS;
+        case MonsterEncounter::ORB_WALKER:
+            return strong == MonsterEncounter::ORB_WALKER;
+        case MonsterEncounter::THREE_SHAPES:
+            return strong == MonsterEncounter::FOUR_SHAPES;
+        default:
+            return false;
+    }
+}
+
 void GameContext::populateFirstStrongEnemy(const MonsterEncounter monsters[], const float weights[], int monstersSize) {
-    auto lastMonster = monsterList.back();
+    const auto lastMonster = monsterList.back();
     while (true) {
         int idx = rollWeightedIdx(monsterRng.random(), weights, monstersSize);
         auto toAdd = monsters[idx];
-
-        switch (toAdd) {
-
-            case MonsterEncounter::LARGE_SLIME:
-            case MonsterEncounter::LOTS_OF_SLIMES:
-                if (lastMonster == MonsterEncounter::SMALL_SLIMES) {
-                    continue;
-                }
-                break;
-
-            case MonsterEncounter::THREE_LOUSE:
-                if (lastMonster == MonsterEncounter::TWO_LOUSE) {
-                    continue;
-                }
-                break;
-
-            case MonsterEncounter::CHOSEN_AND_BYRDS:
-                break;
-            case MonsterEncounter::SENTRY_AND_SPHERE:
-                break;
-            case MonsterEncounter::SNAKE_PLANT:
-                break;
-            case MonsterEncounter::SNECKO:
-                break;
-            case MonsterEncounter::CENTURION_AND_HEALER:
-                break;
-            case MonsterEncounter::CULTIST_AND_CHOSEN:
-                break;
-            case MonsterEncounter::THREE_CULTIST:
-                break;
-            case MonsterEncounter::SHELLED_PARASITE_AND_FUNGI:
-                break;
-            case MonsterEncounter::SPIRE_GROWTH:
-                break;
-            case MonsterEncounter::TRANSIENT:
-                break;
-            case MonsterEncounter::FOUR_SHAPES:
-                break;
-            case MonsterEncounter::MAW:
-                break;
-            case MonsterEncounter::SPHERE_AND_TWO_SHAPES:
-                break;
-            case MonsterEncounter::JAW_WORM_HORDE:
-                break;
-            case MonsterEncounter::WRITHING_MASS:
-                break;
-
-            default: // should not happen
-                break;
+        if (!isFirstStrongEnemyExcluded(lastMonster, toAdd)) {
+            monsterList.push_back(toAdd);
+            return;
         }
-
-        monsterList.push_back(toAdd);
-        return;
     }
 }
 
 void GameContext::transitionToAct(int targetAct) {
     act = targetAct;
 
-    if (cardRng.counter < 250) {
+    if (cardRng.counter > 0 && cardRng.counter < 250) {
         cardRng.setCounter(250);
-    } else if (cardRng.counter < 500) {
+    } else if (cardRng.counter > 250 && cardRng.counter < 500) {
         cardRng.setCounter(500);
-    } else if (cardRng.counter < 750) {
+    } else if (cardRng.counter > 500 && cardRng.counter < 750) {
         cardRng.setCounter(750);
     }
 
@@ -850,6 +830,7 @@ void GameContext::transitionToMapNode(int mapNodeX) {
 void GameContext::setupEvent() { // todo necronomicon event
     screenState = ScreenState::EVENT_SCREEN;
     const bool unfavorable = ascension >= 15;
+    info.eventData = 0; // Scrap Ooze's failed reaches would otherwise carry over to Colosseum's phase
 
     switch (curEvent) {
         case Event::BIG_FISH:
@@ -883,10 +864,13 @@ void GameContext::setupEvent() { // todo necronomicon event
             info.hpAmount0 = std::max(1, fractionMaxHp(.10f, FLOOR));
             break;
 
-        case Event::FALLING: { // todo test and CANNOT BE BOTTLED
+        case Event::FALLING: {
+            // CardHelper.returnCardOfType leaves out bottled cards.
             int counts[3] {0,0,0};
-            for (const auto &c : deck.cards) {
-                ++counts[static_cast<int>(c.getType())];
+            for (int i = 0; i < deck.cards.size(); ++i) {
+                if (!deck.isCardBottled(i) && deck.cards[i].getType() <= CardType::POWER) {
+                    ++counts[static_cast<int>(deck.cards[i].getType())];
+                }
             }
 
             int attacksIdx = counts[0] > 0 ? miscRng.random(counts[0] - 1) : -1;
@@ -902,6 +886,9 @@ void GameContext::setupEvent() { // todo necronomicon event
             info.powerCardDeckIdx = -1;
 
             for (int i = 0; i < deck.cards.size(); ++i) {
+                if (deck.isCardBottled(i)) {
+                    continue;
+                }
                 switch (deck.cards[i].getType()) {
                     case CardType::ATTACK:
                         if (attackCount++ == attacksIdx) {
@@ -938,7 +925,7 @@ void GameContext::setupEvent() { // todo necronomicon event
 
         case Event::GOLDEN_IDOL:
             info.hpAmount0 = fractionMaxHp(unfavorable ? 0.35f : 0.25f);
-            info.hpAmount1 = fractionMaxHp(unfavorable ? 0.10f : 0.08f);
+            info.hpAmount1 = std::max(fractionMaxHp(unfavorable ? 0.10f : 0.08f), 1);
             break;
 
         case Event::KNOWING_SKULL:
@@ -1177,9 +1164,9 @@ void GameContext::afterBattle() {
             break;
 
         case Room::EVENT:
-            if (curEvent == Event::MYSTERIOUS_SPHERE) { // todo gold from golden idol?
+            if (curEvent == Event::MYSTERIOUS_SPHERE) {
                 Rewards reward;
-                reward.addGold(info.gold);
+                reward.addGold(goldWithIdol(info.gold));
                 reward.addRelic(info.bossRelics[0]);
                 addPotionRewards(reward);
                 reward.addCardReward(createCardReward(Room::EVENT));
@@ -1315,12 +1302,11 @@ bool GameContext::obtainRelic(RelicId r) {
             break;
         }
 
-        case RelicId::BLACK_BLOOD: {
-            if (hasRelic(RelicId::BURNING_BLOOD)) {
-                relics.remove(RelicId::BURNING_BLOOD);
-            }
-            break;
-        }
+        case RelicId::BLACK_BLOOD:
+        case RelicId::FROZEN_CORE:
+        case RelicId::HOLY_WATER:
+        case RelicId::RING_OF_THE_SERPENT:
+            break; // take their starter relic's slot below
 
         case RelicId::BOTTLED_FLAME: {
             opensScreen = obtainBottleHelper(*this, CardType::ATTACK);
@@ -1342,13 +1328,42 @@ bool GameContext::obtainRelic(RelicId r) {
             for (int i = 0; i < 5; ++i) {
                 pReward[i] = getRandomPotion(potionRng, cc);
             }
+            createCardReward(curRoom); // CombatRewardScreen.open rolls one, and the relic takes it back out
             openCombatRewardScreen({pReward, 5});
             opensScreen = true;
             break;
         }
 
+        case RelicId::ORRERY: {
+            Rewards reward;
+            for (int i = 0; i < 5; ++i) {
+                reward.addCardReward(createCardReward(curRoom));
+            }
+            openCombatRewardScreen(reward);
+            opensScreen = true;
+            break;
+        }
+
+        case RelicId::LIZARD_TAIL:
+            relicData = 1; // ready to revive; the battle code clears it once used
+            break;
+
+        case RelicId::OLD_COIN:
+            obtainGold(300);
+            break;
+
+        case RelicId::DOLLYS_MIRROR:
+            openCardSelectScreen(CardSelectScreenType::DUPLICATE, 1);
+            opensScreen = true;
+            break;
+
+        case RelicId::NECRONOMICON:
+            deck.obtain(*this, CardId::NECRONOMICURSE);
+            break;
+
         case RelicId::CALLING_BELL: {
             deck.obtain(*this, CardId::CURSE_OF_THE_BELL);
+            createCardReward(curRoom); // CombatRewardScreen.open rolls one, and the relic clears the screen after
             Rewards reward;
             reward.addRelic(returnRandomScreenlessRelic(RelicTier::COMMON));
             reward.addRelic(returnRandomScreenlessRelic(RelicTier::UNCOMMON));
@@ -1367,6 +1382,32 @@ bool GameContext::obtainRelic(RelicId r) {
         case RelicId::LEES_WAFFLE: {
             playerIncreaseMaxHp(7);
             playerHeal(maxHp);
+            break;
+        }
+
+        case RelicId::MATRYOSHKA: {
+            relicData = 2;
+            break;
+        }
+
+        case RelicId::NLOTHS_HUNGRY_FACE: {
+            relicData = 1;
+            break;
+        }
+
+        // An egg also upgrades the cards on the reward screen it came from.
+        case RelicId::MOLTEN_EGG:
+        case RelicId::TOXIC_EGG:
+        case RelicId::FROZEN_EGG: {
+            const auto type = r == RelicId::MOLTEN_EGG ? CardType::ATTACK : r == RelicId::TOXIC_EGG ? CardType::SKILL : CardType::POWER;
+            auto &rewards = info.rewardsContainer;
+            for (int i = 0; i < rewards.cardRewardCount; ++i) {
+                for (auto &c : rewards.cardRewards[i]) {
+                    if (c.getType() == type && c.canUpgrade() && !c.isUpgraded()) {
+                        c.upgrade();
+                    }
+                }
+            }
             break;
         }
 
@@ -1416,7 +1457,9 @@ bool GameContext::obtainRelic(RelicId r) {
             break;
 
         case RelicId::PRISMATIC_SHARD: {
-            // todo if not defect: masterMaxOrbs = 1
+            if (cc != CharacterClass::DEFECT && masterMaxOrbs == 0) {
+                masterMaxOrbs = 1;
+            }
             break;
         }
 
@@ -1442,7 +1485,7 @@ bool GameContext::obtainRelic(RelicId r) {
 
             playerIncreaseMaxHp(5);
             Rewards reward;
-            reward.addGold(50);
+            reward.addGold(goldWithIdol(50));
             reward.addPotion(getRandomPotion(miscRng, cc));
             reward.addCardReward(createCardReward(curRoom));
             openCombatRewardScreen(reward);
@@ -1463,6 +1506,17 @@ bool GameContext::obtainRelic(RelicId r) {
     }
 
     relics.relics.push_back({r, relicData});
+
+    // BossRelicSelectScreen.relicObtainLogic gives these four instantObtain into slot 0, in place of the starter relic their canSpawn asks for.
+    const auto replaceStarter = [&](RelicId boss, RelicId starter) {
+        if (r == boss && relics.has(starter)) {
+            relics.replaceRelic(starter, boss);
+        }
+    };
+    replaceStarter(RelicId::BLACK_BLOOD, RelicId::BURNING_BLOOD);
+    replaceStarter(RelicId::FROZEN_CORE, RelicId::CRACKED_CORE);
+    replaceStarter(RelicId::HOLY_WATER, RelicId::PURE_WATER);
+    replaceStarter(RelicId::RING_OF_THE_SERPENT, RelicId::RING_OF_THE_SNAKE);
     return opensScreen;
 }
 
@@ -1476,7 +1530,7 @@ RelicId GameContext::returnRandomRelic(RelicTier tier, bool shopRoom, bool fromF
 
         case RelicTier::COMMON:
             if (commonRelicPool.empty()) {
-                retVal = returnRandomRelic(RelicTier::UNCOMMON, shopRoom);
+                return returnRandomRelic(RelicTier::UNCOMMON, shopRoom);
             } else {
                 vec = &commonRelicPool;
             }
@@ -1484,7 +1538,7 @@ RelicId GameContext::returnRandomRelic(RelicTier tier, bool shopRoom, bool fromF
 
         case RelicTier::UNCOMMON:
             if (uncommonRelicPool.empty()) {
-                retVal = returnRandomRelic(RelicTier::RARE, shopRoom);
+                return returnRandomRelic(RelicTier::RARE, shopRoom);
             } else {
                 vec = &uncommonRelicPool;
             }
@@ -1492,7 +1546,7 @@ RelicId GameContext::returnRandomRelic(RelicTier tier, bool shopRoom, bool fromF
 
         case RelicTier::RARE:
             if (rareRelicPool.empty()) {
-                retVal = RelicId::CIRCLET;
+                return RelicId::CIRCLET;
             } else {
                 vec = &rareRelicPool;
             }
@@ -1500,7 +1554,7 @@ RelicId GameContext::returnRandomRelic(RelicTier tier, bool shopRoom, bool fromF
 
         case RelicTier::SHOP:
             if (shopRelicPool.empty()) {
-                retVal = returnRandomRelic(RelicTier::UNCOMMON, shopRoom);
+                return returnRandomRelic(RelicTier::UNCOMMON, shopRoom);
             } else {
                 vec = &shopRelicPool;
             }
@@ -1508,7 +1562,7 @@ RelicId GameContext::returnRandomRelic(RelicTier tier, bool shopRoom, bool fromF
 
         case RelicTier::BOSS:
             if (bossRelicPool.empty()) {
-                retVal = RelicId::RED_CIRCLET;
+                return RelicId::RED_CIRCLET;
             } else {
                 vec = &bossRelicPool;
             }
@@ -1518,7 +1572,8 @@ RelicId GameContext::returnRandomRelic(RelicTier tier, bool shopRoom, bool fromF
             break;
     };
 
-    if (fromFront) {
+    // returnEndRandomRelicKey takes from the end of every pool except the boss pool, which it still takes from the front.
+    if (fromFront || tier == RelicTier::BOSS) {
         retVal = vec->front();
         vec->erase(vec->begin());
     } else {
@@ -1591,6 +1646,9 @@ void GameContext::relicsOnEnterRoom(Room room) {
             if (hasRelic(RelicId::ETERNAL_FEATHER)) {
                 playerHeal(deck.size() / 5 * 3);
             }
+            if (hasRelic(RelicId::ANCIENT_TEA_SET)) {
+                relics.getRelicValueRef(RelicId::ANCIENT_TEA_SET) = -2; // stays ready until the next fight, like the game's counter
+            }
             break;
 
         case Room::EVENT:
@@ -1611,7 +1669,7 @@ CardRarity GameContext::rollCardRarity(Room room) {
         return CardRarity::RARE;
     }
 
-    int rareChance = (room == Room::ELITE ? 10 : 3);
+    int rareChance = room == Room::ELITE ? 10 : (room == Room::SHOP ? 9 : 3);  // ShopRoom sets baseRareCardChance, for Orrery and Cauldron
     const int uncommonChance = (room == Room::ELITE ? 40 : 37);
 
     if (room != Room::REST && hasRelic(RelicId::NLOTHS_GIFT)) {
@@ -1633,12 +1691,7 @@ CardId GameContext::returnTrulyRandomCardFromAvailable(Random &rng, CardId exclu
     auto color = getCardColor(exclude);
     switch (color) {
         case CardColor::COLORLESS: {
-            int idx = rng.random(static_cast<int>(colorlessCardPool.size()-2));
-            if (colorlessCardPool[idx] == exclude) {
-                return colorlessCardPool[idx + 1];
-            } else {
-                return colorlessCardPool[idx];
-            }
+            return randomCardExcept(rng, colorlessCardPool.data(), static_cast<int>(colorlessCardPool.size()), exclude);
         }
 
         case CardColor::CURSE: {
@@ -1646,22 +1699,7 @@ CardId GameContext::returnTrulyRandomCardFromAvailable(Random &rng, CardId exclu
         }
 
         default: {
-            const CardId* pool = TransformCardPool::getPoolForClass(cc);
-            int poolSize = TransformCardPool::getPoolSizeForClass(cc);
-
-            bool excludeInPool = cardRarities[static_cast<int>(exclude)] != CardRarity::BASIC &&
-                                 static_cast<CardColor>(cc) == color;
-
-            if (excludeInPool) {
-                int idx = rng.random(poolSize-2);
-                if (pool[idx] == exclude) {
-                    return pool[idx+1];
-                } else {
-                    return pool[idx];
-                }
-            } else {
-                return pool[rng.random(poolSize-1)];
-            }
+            return randomCardExcept(rng, TransformCardPool::getPoolForClass(cc), TransformCardPool::getPoolSizeForClass(cc), exclude);
         }
     }
 }
@@ -1721,13 +1759,7 @@ int GameContext::getRandomPlayerNonBasicCardIdx() {
 
     java::Collections::shuffle(cardIdxs.begin(), cardIdxs.end(), java::Random(miscRng.randomLong()));
 
-    int retIdx = cardIdxs[0];
-    for (int i = 0; i < retIdx; ++i) {
-        if (deck.cards[i] == deck.cards[retIdx]) {
-            return i;
-        }
-    }
-    return retIdx;
+    return cardIdxs[0];
 }
 
 MonsterEncounter GameContext::getMonsterForRoomCreation() {
@@ -1752,9 +1784,16 @@ MonsterEncounter GameContext::getEliteForRoomCreation() {
     return eliteMonsterList[eliteMonsterListOffset++];
 }
 
+int GameContext::goldWithIdol(int gold) const {
+    if (hasRelic(RelicId::GOLDEN_IDOL)) {
+        gold += static_cast<int>(std::round(static_cast<float>(gold) * 0.25f));
+    }
+    return gold;
+}
+
 void GameContext::addPotionRewards(Rewards &r) {
-    // assume if in a monsters room, they didnt escape
-    int chance = 40 + potionChance;
+    // haveMonstersEscaped leaves the chance at 0, and the roll still happens
+    int chance = info.allMonstersEscaped ? 0 : 40 + potionChance;
 
     if (hasRelic(RelicId::WHITE_BEAST_STATUE)) {
         chance = 100;
@@ -1904,13 +1943,13 @@ void GameContext::openTreasureRoomChest() {
 
     auto relic = returnRandomRelic(info.tier, false);
     if (hasRelic(RelicId::NLOTHS_HUNGRY_FACE) && relics.getRelicValue(RelicId::NLOTHS_HUNGRY_FACE) > 0) {
+        // removeOneRelicFromRewards takes the sapphire key linked to the relic as well
         --relics.getRelicValueRef(RelicId::NLOTHS_HUNGRY_FACE);
     } else {
         reward.addRelic(relic);
-    }
-
-    if (!hasKey(Key::SAPPHIRE_KEY)) {
-        reward.sapphireKey = true;
+        if (!hasKey(Key::SAPPHIRE_KEY)) {
+            reward.sapphireKey = true;
+        }
     }
 
     openCombatRewardScreen(reward);
@@ -1918,11 +1957,14 @@ void GameContext::openTreasureRoomChest() {
 
 Rewards GameContext::createCombatReward() {
     Rewards reward;
-    int goldAmt = treasureRng.random(10, 20);
-    if (hasRelic(RelicId::GOLDEN_IDOL)) {
-        goldAmt += std::round(static_cast<float>(goldAmt) * 0.25f);
+    // AbstractRoom.update: no gold, and no treasureRng roll, if every monster escaped (haveMonstersEscaped).
+    if (!info.allMonstersEscaped) {
+        int goldAmt = treasureRng.random(10, 20);
+        if (hasRelic(RelicId::GOLDEN_IDOL)) {
+            goldAmt += std::round(static_cast<float>(goldAmt) * 0.25f);
+        }
+        reward.addGold(goldAmt);
     }
-    reward.addGold(goldAmt);
     addPotionRewards(reward);
     reward.addCardReward(createCardReward(Room::MONSTER)); // TODO Prayer wheel
     if (hasRelic(RelicId::PRAYER_WHEEL)) {
@@ -2106,9 +2148,6 @@ void GameContext::damagePlayer(int amount) {
 #ifdef sts_asserts
     assert(amount > 0);
 #endif
-    if (amount <= 5 && relics.has(RelicId::TORII)) {
-        amount = 1;
-    }
     playerLoseHp(amount);
 }
 
@@ -2139,7 +2178,7 @@ void GameContext::playerOnDie() {
     if (it != potions.end()) {
         *it = Potion::EMPTY_POTION_SLOT;
         --potionCount;
-        curHp = std::max(1, static_cast<int>(hasBark ? 0.6f : 0.3f * static_cast<float>(maxHp)));
+        curHp = std::max(1, static_cast<int>((hasBark ? 0.6f : 0.3f) * static_cast<float>(maxHp)));
         return;
     }
 
@@ -2210,6 +2249,38 @@ void GameContext::drinkPotion(Potion p) {
 #endif
             break;
     }
+    if (hasRelic(RelicId::TOY_ORNITHOPTER)) {  // FIX: relic had no implementation
+        playerHeal(5);
+    }
+}
+
+void GameContext::afterEscape() {
+    // Smoke Bomb: the end of the fight still rolls gold and a potion, but the reward screen opens without them.
+    if (curRoom == Room::MONSTER) {
+        treasureRng.random(10, 20);
+    } else if (curRoom == Room::ELITE) {
+        treasureRng.random(25, 35);
+        returnRandomRelic(returnRandomRelicTierElite(relicRng));
+        if (hasRelic(RelicId::BLACK_STAR)) {
+            returnNonCampfireRelic(returnRandomRelicTierElite(relicRng));
+        }
+    }
+    Rewards discarded;
+    addPotionRewards(discarded);
+    if (curRoom == Room::EVENT && curEvent == Event::COLOSSEUM) {
+        if (info.eventData == 0) {
+            // Colosseum.reopen offers the second choice however the first fight ended.
+            info.eventData = 1;
+            screenState = ScreenState::EVENT_SCREEN;
+            regainControlAction = returnToMapAction;
+            return;
+        }
+        // Colosseum takes these off their pools when the second fight is chosen, so escaping loses them.
+        returnRandomScreenlessRelic(RelicTier::RARE);
+        returnRandomScreenlessRelic(RelicTier::UNCOMMON);
+    }
+    regainControlAction = returnToMapAction;
+    regainControl();
 }
 
 void GameContext::drinkPotionAtIdx(int idx) {
@@ -2237,8 +2308,7 @@ void GameContext::chooseNeowOption(const Neow::Option &o) {
 
     switch (o.d) {
         case Neow::Drawback::TEN_PERCENT_HP_LOSS:
-            maxHp = static_cast<int>(0.9f * static_cast<float>(maxHp));
-            curHp = std::min(curHp, maxHp);
+            loseMaxHp(static_cast<int>(static_cast<float>(maxHp) * 0.1f));
             break;
 
         case Neow::Drawback::NO_GOLD:
@@ -2246,11 +2316,11 @@ void GameContext::chooseNeowOption(const Neow::Option &o) {
             break;
 
         case Neow::Drawback::PERCENT_DAMAGE:
-            curHp = curHp / 10 * 7;
+            curHp -= curHp / 10 * 3;
             break;
 
         case Neow::Drawback::LOSE_STARTER_RELIC:
-            relics.remove(getStarterRelicForClass(cc));
+            relics.remove(relics.relics.front().id); // NeowReward takes whatever is in slot 0
             break;
 
         case Neow::Drawback::NONE:
@@ -2313,12 +2383,13 @@ void GameContext::chooseNeowOption(const Neow::Option &o) {
         }
 
         case Neow::Bonus::RANDOM_COMMON_RELIC:
-            obtainRelic(returnRandomRelic(RelicTier::COMMON, false, true));
-            regainControlAction(*this);
+            if (!obtainRelic(returnRandomRelic(RelicTier::COMMON, false, true))) {
+                regainControlAction(*this);
+            }
             break;
 
         case Neow::Bonus::TEN_PERCENT_HP_BONUS:
-            maxHp += static_cast<int>(static_cast<float>(maxHp) * 0.1f);
+            playerIncreaseMaxHp(static_cast<int>(static_cast<float>(maxHp) * 0.1f));
             regainControlAction(*this);
             break;
 
@@ -2343,8 +2414,9 @@ void GameContext::chooseNeowOption(const Neow::Option &o) {
             break;
 
         case Neow::Bonus::ONE_RARE_RELIC:
-            obtainRelic(returnRandomRelic(RelicTier::RARE, false, true));
-            regainControlAction(*this);
+            if (!obtainRelic(returnRandomRelic(RelicTier::RARE, false, true))) {
+                regainControlAction(*this);
+            }
             break;
 
         case Neow::Bonus::THREE_RARE_CARDS:
@@ -2361,15 +2433,11 @@ void GameContext::chooseNeowOption(const Neow::Option &o) {
         case Neow::Bonus::TRANSFORM_TWO_CARDS:
             info.transformRng = NEOW_RNG;
             openCardSelectScreen(CardSelectScreenType::TRANSFORM, 2);
-            {
-                int roll = cardRng.random(static_cast<int>(9));
-                deck.obtain(*this, curseCardPool[roll]);
-            }
             regainControlAction = returnToMapAction;
             break;
 
         case Neow::Bonus::TWENTY_PERCENT_HP_BONUS:
-            maxHp += static_cast<int>(static_cast<float>(maxHp) * 0.2f);
+            playerIncreaseMaxHp(static_cast<int>(static_cast<float>(maxHp) * 0.1f) * 2);
             regainControlAction(*this);
             break;
 
@@ -2551,9 +2619,35 @@ void GameContext::chooseEventOption(int idx) {
             break;
         }
 
-        case Event::COLOSSEUM: // todo
-            regainControl();
+        case Event::COLOSSEUM: {  // FIX: was a stub
+            if (info.eventData == 0) {
+                // forced fight vs the slavers; afterwards return to this event for the second choice
+                regainControlAction = [](GameContext &gc) {
+                    // The end of every fight rolls a potion. This fight's rewards are thrown away, but the roll still counts.
+                    Rewards discarded;
+                    gc.addPotionRewards(discarded);
+                    gc.info.eventData = 1;
+                    gc.screenState = ScreenState::EVENT_SCREEN;
+                    gc.regainControlAction = returnToMapAction;
+                };
+                enterBattle(MonsterEncounter::COLOSSEUM_EVENT_SLAVERS);
+            } else if (idx == 0) {
+                regainControl();  // cowardice: leave
+            } else {
+                regainControlAction = [](GameContext &gc) {  // victory: Taskmaster + Nob for the big reward
+                    Rewards reward;
+                    reward.addGold(gc.goldWithIdol(100));
+                    reward.addRelic(gc.returnRandomScreenlessRelic(RelicTier::RARE));
+                    reward.addRelic(gc.returnRandomScreenlessRelic(RelicTier::UNCOMMON));
+                    gc.addPotionRewards(reward);
+                    reward.addCardReward(gc.createCardReward(Room::EVENT));
+                    gc.openCombatRewardScreen(reward);
+                    gc.regainControlAction = returnToMapAction;
+                };
+                enterBattle(MonsterEncounter::COLOSSEUM_EVENT_NOBS);
+            }
             break;
+        }
 
         case Event::CURSED_TOME: {
             int &phase = info.eventData;
@@ -2618,12 +2712,12 @@ void GameContext::chooseEventOption(int idx) {
 
                     regainControlAction = [=](GameContext &gc) {
                         Rewards reward;
-                        reward.addGold(goldAmt);
+                        reward.addGold(gc.goldWithIdol(goldAmt));
                         if (addRelic) {
                             reward.addRelic(combatRewardRelic);
                         }
-                        reward.addCardReward(createCardReward(Room::EVENT));
-                        addPotionRewards(reward);
+                        gc.addPotionRewards(reward);
+                        reward.addCardReward(gc.createCardReward(Room::EVENT));
                         gc.openCombatRewardScreen(reward);
                         gc.regainControlAction = returnToMapAction;
                     };
@@ -2662,6 +2756,7 @@ void GameContext::chooseEventOption(int idx) {
                     break;
 
                 case 1:
+                    loseGold(unfavorable ? 50 : 40);  // FIX: "Adjustments" costs the same as option 0
                     deck.upgradeRandomCards(miscRng, 2);
                     regainControl();
                     break;
@@ -2673,8 +2768,9 @@ void GameContext::chooseEventOption(int idx) {
 
                 case 3:
                     loseGold(unfavorable ? 75 : 60);
-                    deck.transformRandomCards(miscRng, 2); // TODO
-                    regainControl();
+                    info.transformRng = MISC_RNG;
+                    openCardSelectScreen(CardSelectScreenType::TRANSFORM, 2);
+                    break;
 
                 case 4:
                     loseGold(unfavorable ? 110 : 90);
@@ -2683,6 +2779,7 @@ void GameContext::chooseEventOption(int idx) {
                         returnToMapAction(gc);
                     };
                     openCardSelectScreen(CardSelectScreenType::REMOVE, 1);
+                    break;  // FIX: fell through into case 5
 
                 case 5:
                     playerLoseHp(unfavorable ? 5 : 3);
@@ -2920,18 +3017,20 @@ void GameContext::chooseEventOption(int idx) {
         case Event::KNOWING_SKULL: {
             switch (idx) {
                 case 0:
+                    playerLoseHp(info.hpAmount2++);
+                    if (!relics.has(RelicId::SOZU)) {
+                        obtainPotion(getRandomPotion(potionRng, cc));
+                    }
+                    break;
+
+                case 1:
                     playerLoseHp(info.hpAmount0++);
                     obtainGold(90);
                     break;
 
-                case 1:
+                case 2:
                     playerLoseHp(info.hpAmount1++);
                     deck.obtain(*this, returnColorlessCard(CardRarity::UNCOMMON));
-                    break;
-
-                case 2:
-                    playerLoseHp(info.hpAmount2++);
-                    obtainPotion(getRandomPotion(potionRng, cc));
                     break;
 
                 case 3:
@@ -2993,8 +3092,9 @@ void GameContext::chooseEventOption(int idx) {
                 const int goldAmt = miscRng.random(25, 35);
                 regainControlAction = [goldAmt](auto &gc) {
                     Rewards reward;
-                    reward.addGold(goldAmt);
-                    reward.addRelic(RelicId::RED_MASK);
+                    reward.addGold(gc.goldWithIdol(goldAmt));
+                    reward.addRelic(gc.hasRelic(RelicId::RED_MASK) ? RelicId::CIRCLET : RelicId::RED_MASK);
+                    gc.addPotionRewards(reward);
                     reward.addCardReward(gc.createCardReward(Room::EVENT));
                     gc.openCombatRewardScreen(reward);
                     gc.regainControlAction = returnToMapAction;
@@ -3022,13 +3122,13 @@ void GameContext::chooseEventOption(int idx) {
                     };
                     java::Collections::shuffle(bosses, bosses+3, java::Random(miscRng.randomLong()));
 
-                    const int goldAmt = unfavorable ? 25 : 50;
+                    const int goldAmt = ascension >= 13 ? 25 : 50; // the only event rule that isn't at A15
                     const RelicId rareRelic = returnRandomRelic(RelicTier::RARE);
                     regainControlAction = [=](GameContext &gc) {
                         Rewards reward;
-                        reward.addGold(goldAmt);
+                        reward.addGold(gc.goldWithIdol(goldAmt));
                         reward.addRelic(rareRelic);
-                        addPotionRewards(reward);
+                        gc.addPotionRewards(reward);
                         reward.addCardReward(gc.createCardReward(Room::EVENT));
                         gc.openCombatRewardScreen(reward);
                         gc.regainControlAction = returnToMapAction;
@@ -3071,17 +3171,19 @@ void GameContext::chooseEventOption(int idx) {
                 const int goldAmt = miscRng.random(20, 30);
                 regainControlAction = [=](GameContext &gc) {
                     Rewards reward;
-                    reward.addGold(goldAmt);
+                    reward.addGold(gc.goldWithIdol(goldAmt));
                     reward.addRelic(RelicId::ODD_MUSHROOM);
-                    addPotionRewards(reward);
-                    reward.addCardReward(createCardReward(Room::EVENT));
+                    gc.addPotionRewards(reward);
+                    reward.addCardReward(gc.createCardReward(Room::EVENT));
                     gc.openCombatRewardScreen(reward);
                     gc.regainControlAction = returnToMapAction;
                 };
                 enterBattle(MonsterEncounter::MUSHROOMS_EVENT);
 
             } else if (idx == 1) {
-                obtainGold(unfavorable ? 50 : 99);
+                // FIX: real game heals 25% max HP and adds Parasite (was +99 gold)
+                playerHeal(fractionMaxHp(0.25f));
+                deck.obtain(*this, CardId::PARASITE);
                 regainControl();
 
             } else {
@@ -3102,8 +3204,7 @@ void GameContext::chooseEventOption(int idx) {
                 enterBattle(MonsterEncounter::MYSTERIOUS_SPHERE_EVENT);
 
             } else if (idx == 1) {
-                obtainGold(unfavorable ? 50 : 99);
-                regainControl();
+                regainControl();  // FIX: leaving gives nothing (was +99 gold)
 
             } else {
                 assert(false);
@@ -3154,7 +3255,8 @@ void GameContext::chooseEventOption(int idx) {
 
         case Event::NOTE_FOR_YOURSELF:
             if (idx == 0) {
-                deck.obtain(*this, noteForYourselfCard);
+                // The event adds the card itself and runs the relics' onObtainCard. Omamori is in the obtain effect.
+                deck.obtain(*this, noteForYourselfCard, 1, false);
                 openCardSelectScreen(CardSelectScreenType::REMOVE, 1);
             } else if (idx == 1) {
                 regainControl();
@@ -3178,7 +3280,7 @@ void GameContext::chooseEventOption(int idx) {
 
         case Event::SCRAP_OOZE:
             if (idx == 0) {
-                damagePlayer(unfavorable ? 5 : 3);
+                damagePlayer((unfavorable ? 5 : 3) + info.eventData);  // FIX: +1 per failed reach
                 const int roll = miscRng.random(99);
                 const int relicChance = info.eventData*10 + 25;
                 if (roll >= 99 - relicChance) {
@@ -3222,6 +3324,7 @@ void GameContext::chooseEventOption(int idx) {
                 playerLoseHp(10);
             }
 
+            miscRng.randomLong();  // getRandomMemory shuffles the page's text with this stream
             Rewards reward;
             for (int i = 0; i <= idx; ++i) {
                 reward.addCardReward(createColorlessCardReward());
@@ -3232,7 +3335,8 @@ void GameContext::chooseEventOption(int idx) {
 
         case Event::SHINING_LIGHT: {
             if (idx == 0) {
-                damagePlayer(info.hpAmount0);
+                // the only event damage Torii sees: others have no owner or are HP loss
+                damagePlayer(info.hpAmount0 <= 5 && relics.has(RelicId::TORII) ? 1 : info.hpAmount0);
                 auto list = deck.getUpgradeableCardIdxs();
                 java::Collections::shuffle(list.begin(), list.end(), java::Random(miscRng.randomLong()));
                 if (!list.empty()) {
@@ -3325,9 +3429,18 @@ void GameContext::chooseEventOption(int idx) {
 
         case Event::THE_MAUSOLEUM: {
             if (idx == 0) {
-                auto result = miscRng.randomBoolean();
-                if (result || unfavorable) {
+                // The game creates the curse's obtain effect first, and that's where Omamori checks, so the relic
+                // found here can't stop this curse. Everything else about the curse happens after the relic is in.
+                const auto result = miscRng.randomBoolean();
+                const auto relic = returnRandomScreenlessRelic(returnRandomRelicTier(relicRng, act));
+                if (relic == RelicId::OMAMORI && (result || unfavorable)) {
                     deck.obtain(*this, CardId::WRITHE);
+                    obtainRelic(relic);
+                } else {
+                    obtainRelic(relic);
+                    if (result || unfavorable) {
+                        deck.obtain(*this, CardId::WRITHE);
+                    }
                 }
                 regainControl();
 
@@ -3375,17 +3488,20 @@ void GameContext::chooseEventOption(int idx) {
             Potion pArr[3];
             switch (idx) {
                 case 0: {
+                    loseGold(20);  // FIX: potions were free
                     pArr[0] = getRandomPotion(potionRng, cc);
                     openCombatRewardScreen(Rewards(pArr, 1));
                     break;
                 }
                 case 1: {
+                    loseGold(30);  // FIX
                     pArr[0] = getRandomPotion(potionRng, cc);
                     pArr[1] = getRandomPotion(potionRng, cc);
                     openCombatRewardScreen(Rewards(pArr, 2));
                     break;
                 }
                 case 2: {
+                    loseGold(40);  // FIX
                     pArr[0] = getRandomPotion(potionRng, cc);
                     pArr[1] = getRandomPotion(potionRng, cc);
                     pArr[2] = getRandomPotion(potionRng, cc);
@@ -3637,6 +3753,9 @@ void GameContext::chooseSelectCardScreenOption(int idx) {
         case CardSelectScreenType::OBTAIN:
             for (const auto &c : info.haveSelectedCards) {
                 deck.obtain(*this, c.card, 1);
+                if (info.selectScreenType == CardSelectScreenType::DUPLICATE && c.card.getId() == CardId::FORCE_FIELD) {
+                    deck.cards.back().misc = c.card.misc; // a copy keeps the cost of the card it copies
+                }
             }
             regainControl();
             break;

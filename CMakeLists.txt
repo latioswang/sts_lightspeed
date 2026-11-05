@@ -11,7 +11,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_FLAGS  "-Wno-shift-count-overflow -O3")
 
 add_subdirectory(json)
-add_subdirectory(pybind11)
+find_package(pybind11 CONFIG REQUIRED)
 
 pybind11_add_module(slaythespire bindings/slaythespire.cpp bindings/bindings-util.cpp ${sts_lightspeed_SOURCES})
 target_include_directories(slaythespire PUBLIC include)
@@ -34,3 +34,38 @@ target_link_directories(small-test PRIVATE json::nlohmann_json)
 target_include_directories(small-test PUBLIC include)
 target_include_directories(small-test PUBLIC json/include)
 target_include_directories(small-test PUBLIC bindings)
+
+# Other classes' cards checked against what the game's bytecode does.
+add_executable(test_defect_cards EXCLUDE_FROM_ALL apps/test_defect_cards.cpp)
+target_include_directories(test_defect_cards PUBLIC include json/single_include)
+target_link_libraries(test_defect_cards stscore)
+add_executable(test_silent_cards EXCLUDE_FROM_ALL apps/test_silent_cards.cpp)
+target_include_directories(test_silent_cards PUBLIC include json/single_include)
+target_link_libraries(test_silent_cards stscore)
+add_executable(test_watcher_cards EXCLUDE_FROM_ALL apps/test_watcher_cards.cpp)
+target_include_directories(test_watcher_cards PUBLIC include json/single_include)
+target_link_libraries(test_watcher_cards stscore)
+add_executable(test_class_relics EXCLUDE_FROM_ALL apps/test_class_relics.cpp)
+target_include_directories(test_class_relics PUBLIC include json/single_include)
+target_link_libraries(test_class_relics stscore)
+
+# ---- research additions (leak-free agent + frozen eval) ----
+set(STS_RESEARCH_DIR /home/user/sts/research CACHE PATH "research/ directory of the latioswang/sts checkout")
+add_library(stscore STATIC ${sts_lightspeed_SOURCES})
+target_include_directories(stscore PUBLIC include json/single_include)
+set_property(TARGET stscore PROPERTY POSITION_INDEPENDENT_CODE ON)
+# NOTE: sts_card_manager_use_fixed_list (fixed-size piles, ~10% faster) was tried and REVERTED:
+# piles can exceed any fixed capacity in degenerate rollouts (e.g. Dead Branch + Corruption) and the
+# Release library has asserts compiled out -> silent stack corruption (3/300 val games crashed).
+file(GLOB FAIR_SOURCES CONFIGURE_DEPENDS "${STS_RESEARCH_DIR}/cpp/*.cpp")
+add_executable(fair_eval ${STS_RESEARCH_DIR}/eval/eval_main.cpp ${FAIR_SOURCES})
+target_include_directories(fair_eval PUBLIC include ${STS_RESEARCH_DIR}/cpp ${STS_RESEARCH_DIR}/vf)
+target_link_libraries(fair_eval stscore pthread)
+
+# ---- real-game bridge (research/realgame) ----
+if(EXISTS "${STS_RESEARCH_DIR}/realgame/bridge_main.cpp")
+  file(GLOB BRIDGE_SOURCES CONFIGURE_DEPENDS "${STS_RESEARCH_DIR}/realgame/*.cpp")
+  add_executable(sts_bridge ${BRIDGE_SOURCES} ${FAIR_SOURCES})
+  target_include_directories(sts_bridge PUBLIC include ${STS_RESEARCH_DIR}/realgame ${STS_RESEARCH_DIR}/cpp ${STS_RESEARCH_DIR}/vf)
+  target_link_libraries(sts_bridge stscore pthread)
+endif()

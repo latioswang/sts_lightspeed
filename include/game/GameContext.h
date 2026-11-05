@@ -79,6 +79,7 @@ namespace sts {
 
     struct ScreenStateInfo {
         MonsterEncounter encounter;
+        bool allMonstersEscaped = false;
 
         // CardSelectScreen
         RngReference transformRng = CARD_RNG;
@@ -149,9 +150,9 @@ namespace sts {
 
         sts::Card noteForYourselfCard = Card(CardId::IRON_WAVE);
 
-        static constexpr bool disableColosseum = true;
-        static constexpr bool disableMatchAndKeep = true;
-        static constexpr bool disablePrismaticShard = true;
+        static constexpr bool disableColosseum = false;  // FIX: event is now implemented
+        static constexpr bool disableMatchAndKeep = false;
+        static constexpr bool disablePrismaticShard = false;
         bool skipBattles = false;
 
         // ********* hidden from player *********
@@ -230,6 +231,11 @@ namespace sts {
         RelicContainer relics;
         Deck deck;
 
+        // AbstractPlayer.masterMaxOrbs: the orb slots each fight starts with. Prismatic Shard gives one to a class with none.
+        std::int8_t masterMaxOrbs = 0;
+        // ForceField's constructor counts the Power cards in cardsPlayedThisCombat, which is only cleared when the next fight starts.
+        std::int8_t powersPlayedLastCombat = 0;
+
         bool blueKey = false;
         bool greenKey = false;
         bool redKey = false;
@@ -301,6 +307,7 @@ namespace sts {
         MonsterEncounter getMonsterForRoomCreation();
         MonsterEncounter getEliteForRoomCreation();
 
+        [[nodiscard]] int goldWithIdol(int gold) const;
         void addPotionRewards(Rewards &r);
         CardReward createCardReward(Room room);
         CardReward createColorlessCardReward();
@@ -344,6 +351,7 @@ namespace sts {
         void chooseTreasureRoomOption(bool openChest);
 
         void regainControl();
+        void afterEscape();  // Smoke Bomb escape: no rewards
     };
 
 

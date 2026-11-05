@@ -348,7 +348,39 @@ void BattleSimulator::printCardSelectActions(std::ostream &os) const {
             printCardOptionsHelper(os, bc->cards.discardPile.begin(), bc->cards.discardPile.end());
             break;
 
+        case CardSelectTask::DISCARD:
+            os << "Discard: Choose a card to discard, " << bc->cardSelectInfo.pickCount << " left.\n";
+            printCardOptionsHelper(os, bc->cards.hand.begin(), bc->cards.hand.begin() + bc->cards.cardsInHand);
+            break;
+
         case CardSelectTask::NIGHTMARE:
+            os << "Nightmare: Choose a card to get three copies of next turn.\n";
+            printCardOptionsHelper(os, bc->cards.hand.begin(), bc->cards.hand.begin() + bc->cards.cardsInHand);
+            break;
+
+        case CardSelectTask::SCRY:
+            os << "Scry: Choose a card to discard, offset from the top of the draw pile, from " << bc->cardSelectInfo.data0
+               << " up to " << bc->cardSelectInfo.pickCount - 1 << ", or " << CardSelectInfo::SCRY_DONE_IDX << " to stop.\n";
+            break;
+
+        case CardSelectTask::OMNISCIENCE:
+            os << "Omniscience: Choose a card to play.\n";
+            printCardOptionsHelper(os, bc->cards.drawPile.begin(), bc->cards.drawPile.end());
+            break;
+
+        case CardSelectTask::FOREIGN_INFLUENCE:
+        case CardSelectTask::WISH:
+            os << "Choose one: 0 " << getCardName(bc->cardSelectInfo.cards[0]) << ", 1 " << getCardName(bc->cardSelectInfo.cards[1])
+               << ", 2 " << getCardName(bc->cardSelectInfo.cards[2]) << "\n";
+            break;
+
+        case CardSelectTask::CHOOSE_STANCE:
+            os << "Choose one: 0 Wrath, 1 Calm\n";
+            break;
+
+        case CardSelectTask::RETAIN:
+            os << "Well-Laid Plans: Choose a card to keep, " << bc->cardSelectInfo.pickCount << " left, or " << CardSelectInfo::RETAIN_DONE_IDX << " to stop.\n";
+            printCardOptionsHelper(os, bc->cards.hand.begin(), bc->cards.hand.begin() + bc->cards.cardsInHand - bc->cardSelectInfo.data0);
             break;
 
         case CardSelectTask::SECRET_TECHNIQUE:
@@ -374,6 +406,8 @@ void BattleSimulator::printCardSelectActions(std::ostream &os) const {
 
 
         case CardSelectTask::SETUP:
+            os << "Setup: Choose a card to put on top of your draw pile.\n";
+            printCardOptionsHelper(os, bc->cards.hand.begin(), bc->cards.hand.begin() + bc->cards.cardsInHand);
             break;
 
         case CardSelectTask::WARCRY:
@@ -474,13 +508,44 @@ void BattleSimulator::takeCardSelectAction(const std::string &action) {
             bc->chooseDiscardToHandCard(std::stoi(action), true);
             break;
 
-        case CardSelectTask::MEDITATE:  // todo
+        case CardSelectTask::MEDITATE:
+            bc->chooseMeditateCard(std::stoi(action));
             break;
 
-        case CardSelectTask::NIGHTMARE:  // todo
+        case CardSelectTask::SCRY:
+            bc->chooseScryCard(std::stoi(action));
             break;
 
-        case CardSelectTask::RECYCLE: // todo
+        case CardSelectTask::OMNISCIENCE:
+            bc->chooseOmniscienceCard(std::stoi(action));
+            break;
+
+        case CardSelectTask::FOREIGN_INFLUENCE:
+            bc->chooseForeignInfluenceCard(std::stoi(action));
+            break;
+
+        case CardSelectTask::WISH:
+            bc->chooseWishOption(std::stoi(action));
+            break;
+
+        case CardSelectTask::CHOOSE_STANCE:
+            bc->chooseStanceOption(std::stoi(action));
+            break;
+
+        case CardSelectTask::DISCARD:
+            bc->chooseDiscardCard(std::stoi(action));
+            break;
+
+        case CardSelectTask::NIGHTMARE:
+            bc->chooseNightmareCard(std::stoi(action));
+            break;
+
+        case CardSelectTask::RECYCLE:
+            bc->chooseRecycleCard(std::stoi(action));
+            break;
+
+        case CardSelectTask::RETAIN:
+            bc->chooseRetainCard(std::stoi(action));
             break;
 
         case CardSelectTask::SECRET_TECHNIQUE:
@@ -493,7 +558,8 @@ void BattleSimulator::takeCardSelectAction(const std::string &action) {
         case CardSelectTask::SEEK:  // todo
             break;
 
-        case CardSelectTask::SETUP:  // todo
+        case CardSelectTask::SETUP:
+            bc->chooseSetupCard(std::stoi(action));
             break;
 
         case CardSelectTask::WARCRY:

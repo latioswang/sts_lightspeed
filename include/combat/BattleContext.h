@@ -64,6 +64,7 @@ namespace sts {
         Random monsterHpRng;
         Random potionRng;
         Random shuffleRng;
+        Random cardRng; // only Foreign Influence rolls it in a fight, through CardGroup.getRandomCard
 
         int ascension = 0;
         Outcome outcome = Outcome::UNDECIDED;
@@ -76,6 +77,7 @@ namespace sts {
         bool endTurnQueued = false;
         bool turnHasEnded = false;
         bool skipMonsterTurn = false;
+        int monsterTurnsSkipped = 0; // by Vault. A monster's own counters don't move on a turn it doesn't take
 
         ActionQueue<50> actionQueue;
         CardQueue cardQueue;
@@ -92,6 +94,11 @@ namespace sts {
         CardQueueItem curCardQueueItem;
 
         std::bitset<32> miscBits; // 0 stolen gold check,
+
+        // Lesson Learned upgrades a random card in the master deck. These are filled in only if the deck holds one.
+        static constexpr std::int16_t SEARING_BLOW_DECK_IDX = 0x4000; // a flag on an entry below: it stays after an upgrade
+        std::vector<std::int16_t> upgradableDeckIdxs;
+        std::vector<std::int16_t> lessonLearnedUpgrades;
 
         BattleContext() = default;
         BattleContext(const BattleContext &rhs) = default;
@@ -120,6 +127,7 @@ namespace sts {
         void playCardQueueItem(CardQueueItem);
         void useCard();
         void useNoTriggerCard();
+        void noteCardTypePlayed(CardType type);
 
         void useAttackCard();
         void useSkillCard();
@@ -135,6 +143,8 @@ namespace sts {
         void setState(InputState state);
         void addToTop(const Action &a);
         void addToBot(const Action &a);
+        void addToTop(Action &&a);  // PERF: temporaries are moved into the queue instead of copied (same behaviour)
+        void addToBot(Action &&a);
 
         void addToTopCard(CardQueueItem item);
         void addToBotCard(CardQueueItem item);
@@ -151,7 +161,7 @@ namespace sts {
         void callEndOfTurnActions(); // GameActionManager.callEndTurnActions(), called when the end turn cardQueue item is reached.
         void onTurnEnding(); // AbstractRoom endTurn(), called when the turn actually ends.
 
-        void callEndTurnEarlySequence(); // time eater
+        void callEndTurnEarlySequence(bool queueStillRunning=false); // time eater, and PressEndTurnButtonAction
 
         void applyEndOfRoundPowers(); // game : MonsterGroup applyEndOfTurnPowers
         void afterMonsterTurns();
@@ -166,7 +176,15 @@ namespace sts {
 
         void playTopCardInDrawPile(int monsterTargetIdx, bool exhausts);
 
+        void applyMakeCopy(CardInstance &c) const;
         void moveToHandHelper(CardInstance c);
+        void upgradeIfMasterReality(CardInstance &c) const; // what MakeTempCard and the card effects do with Master Reality
+        void changeStance(Stance newStance); // ChangeStanceAction
+        void applyMantra(int amount);
+        void queueMantra(int amount);
+        void scry(int amount); // ScryAction
+        void finishScry();
+        template <typename F> void forEachInBattleInstance(std::int16_t uniqueId, F f); // GetAllInBattleInstances
         void exhaustSpecificCardInHand(int idx, std::int16_t uniqueId);
         void restoreRetainedCards(int count);
         void exhaustTopCardInHand();
@@ -186,6 +204,10 @@ namespace sts {
         void noOpRollMove(); // called by monsters to manipulate the aiRng counter when their rollMove function doesn't do anything
 
         void onManualDiscard(const CardInstance &c);
+        // CardGroup.moveToDiscardPile, triggerOnManualDiscard and GameActionManager.incrementDiscard. Cards in the discard pile from
+        // flyingFrom on, by default just this one, left with this action and land after it: they miss Eviscerate's discount.
+        void discardFromHand(int handIdx, int flyingFrom=-1, bool relicsFirst=false); // relicsFirst: GameActionManager.incrementDiscard runs before the card's own trigger
+        [[nodiscard]] DamageMatrix calculateMultiDamage(const CardInstance &card, int baseDamage) const; // AbstractCard.multiDamage
         void onShuffle();
         void triggerAndMoveToExhaustPile(CardInstance c);
         void mummifiedHandOnUsePower();
@@ -196,6 +218,16 @@ namespace sts {
 
         // single card select helpers
         void chooseArmamentsCard(int handIdx);
+        void chooseDiscardCard(int handIdx);
+        void chooseNightmareCard(int handIdx);
+        void chooseRetainCard(int handIdx);
+        void chooseSetupCard(int handIdx);
+        void chooseScryCard(int offsetFromTop);
+        void chooseMeditateCard(int discardIdx);
+        void chooseOmniscienceCard(int drawIdx);
+        void chooseForeignInfluenceCard(int choice);
+        void chooseWishOption(int choice);
+        void chooseStanceOption(int choice);
         void chooseCodexCard(CardId id);
         void chooseDiscardToHandCard(int discardIdx, bool forZeroCost);
         void chooseDiscoveryCard(CardId id);
@@ -247,11 +279,47 @@ namespace sts {
         }};
     }
 
+    // The game's limbo holds the copies waiting in the card queue.
+    template <typename F>
+    void BattleContext::forEachInBattleInstance(std::int16_t uniqueId, F f) {
+        if (curCardQueueItem.card.getUniqueId() == uniqueId) {
+            f(curCardQueueItem.card);
+        }
+        for (auto &c : cards.drawPile) {
+            if (c.getUniqueId() == uniqueId) {
+                f(c);
+            }
+        }
+        for (auto &c : cards.discardPile) {
+            if (c.getUniqueId() == uniqueId) {
+                f(c);
+            }
+        }
+        for (auto &c : cards.exhaustPile) {
+            if (c.getUniqueId() == uniqueId) {
+                f(c);
+            }
+        }
+        for (int i = 0; i < cardQueue.size; ++i) {
+            auto &c = cardQueue.arr[(cardQueue.frontIdx + i) % CardQueue::capacity].card;
+            if (c.getUniqueId() == uniqueId) {
+                f(c);
+            }
+        }
+        for (int i = 0; i < cards.cardsInHand; ++i) {
+            if (cards.hand[i].getUniqueId() == uniqueId) {
+                f(cards.hand[i]);
+            }
+        }
+    }
+
     template<MonsterStatus s>
     Action Actions::BuffEnemy(int idx, int amount) {
         return {[=] (BattleContext &bc) {
-            // todo check if alive?
-            bc.monsters.arr[idx].buff<s>(amount);
+            // ApplyPowerAction does nothing to a dead, half-dead or escaped target.
+            if (!bc.monsters.arr[idx].isDeadOrEscaped()) {
+                bc.monsters.arr[idx].buff<s>(amount);
+            }
         }};
     }
 
@@ -278,12 +346,21 @@ namespace sts {
 
     template <MonsterStatus s>
     void BattleContext::debuffEnemy(int idx, int amount, bool isSourceMonster) {
-        // todo poison and snake skull
         Monster &e = monsters.arr[idx];
+
+        // ApplyPowerAction does nothing to a dead, half-dead or escaped target.
+        if (e.isDeadOrEscaped()) {
+            return;
+        }
 
         if (e.hasStatus<MS::ARTIFACT>()) {
             e.decrementStatus<MS::ARTIFACT>();
             return;
+        }
+
+        // ApplyPowerAction's constructor adds Snake Skull's point to whatever the player applies.
+        if (s == MS::POISON && player.hasRelic<RelicId::SNECKO_SKULL>()) {
+            ++amount;
         }
 
         e.addDebuff<s>(amount, isSourceMonster);

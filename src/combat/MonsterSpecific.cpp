@@ -430,7 +430,11 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
 
         case MMID::ROMEO_CROSS_SLASH:
             attackPlayerHelper(bc, asc2 ? 17 : 15);
-            setMove(MMID::ROMEO_AGONIZING_SLASH);
+            if (asc17 && !lastTwoMoves(MMID::ROMEO_CROSS_SLASH)) {
+                setMove(MMID::ROMEO_CROSS_SLASH);
+            } else {
+                setMove(MMID::ROMEO_AGONIZING_SLASH);
+            }
             break;
 
         case MMID::ROMEO_MOCK: // 2
@@ -471,13 +475,13 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
         case MMID::BRONZE_AUTOMATON_BOOST: {// 5
             buff<MS::STRENGTH>(asc4 ? 4 : 3);
             addBlock(asc9 ? 12 : 9);
-            auto &lastBoostWasFlail = miscInfo;
-            if (lastBoostWasFlail) {
+            auto &boostsBeforeBeam = miscInfo; // the second Boost leads to Hyper Beam; at A19 Hyper Beam sets this to -1, so the third does
+            if (boostsBeforeBeam > 0) {
                 setMove(MMID::BRONZE_AUTOMATON_HYPER_BEAM);
-                lastBoostWasFlail = false;
+                boostsBeforeBeam = 0;
             } else {
                 setMove(MMID::BRONZE_AUTOMATON_FLAIL);
-                lastBoostWasFlail = true;
+                ++boostsBeforeBeam;
             }
             bc.noOpRollMove();
             break;
@@ -492,6 +496,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
         case MMID::BRONZE_AUTOMATON_HYPER_BEAM: // 2
             attackPlayerHelper(bc, asc4 ? 50 : 45);
             if (asc19) {
+                miscInfo = -1;
                 setMove(MMID::BRONZE_AUTOMATON_BOOST);
             } else {
                 setMove(MMID::BRONZE_AUTOMATON_STUNNED);
@@ -559,14 +564,10 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             bc.addToBot( Actions::RollMove(idx) );
             break;
 
-        case MMID::CENTURION_DEFEND: {
-            if (bc.monsters.getAliveCount() > 1) {
-                auto &mystic = bc.monsters.arr[1];
-                mystic.addBlock(asc17 ? 20 : 15);
-            }
-            rollMove(bc);
+        case MMID::CENTURION_DEFEND:
+            bc.addToBot( Actions::GainBlockRandomEnemy(idx, asc17 ? 20 : 15) );
+            bc.addToBot( Actions::RollMove(idx) );
             break;
-        }
 
         case MMID::CENTURION_FURY:
             attackPlayerHelper(bc, asc2 ? 7 : 6, 3);
@@ -659,8 +660,6 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             attackPlayerHelper(bc, asc2 ? 5 : 4);
             if (doesEscapeNext()) {
                 setMove(MMID::GENERIC_ESCAPE_MOVE);
-            } else {
-                bc.addToBot(Actions::NoOpRollMove());
             }
             break;
         }
@@ -718,7 +717,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
                 auto &minion = bc.monsters.arr[i];
                 if (!minion.isDying()) {
                     minion.buff<MS::STRENGTH>(strGain);
-                    minion.addBlock(asc3 ? 10 : 6);
+                    minion.addBlock(asc18 ? 10 : 6);
                 }
             }
             buff<MS::STRENGTH>(strGain);
@@ -793,7 +792,6 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
         case MMID::HEXAGHOST_ACTIVATE: {// 5
             miscInfo = bc.player.curHp / 12 + 1; // set divider damage
             setMove(MMID::HEXAGHOST_DIVIDER);
-            bc.noOpRollMove();
             break;
         }
 
@@ -806,6 +804,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
 
         case MMID::HEXAGHOST_INFERNO: // 6
             attackPlayerHelper(bc, asc4 ? 3 : 2, 6);
+            bc.addToBot(Actions::BurnIncrease());
             uniquePower0 = 0;
             setMove(MMID::HEXAGHOST_SEAR);
             bc.addToBot( Actions::NoOpRollMove() );
@@ -886,11 +885,14 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             break;
 
         case MMID::LAGAVULIN_SLEEP:
-            if (bc.turn == 2 || !hasStatus<MS::ASLEEP>()) {
+            if (bc.turn == 2 && hasStatus<MS::ASLEEP>()) {
+                // The third idle turn wakes it with a SetMoveAction, so this one rolls nothing.
+                setHasStatus<MS::ASLEEP>(false);
+                decrementStatus<MS::METALLICIZE>(8);
                 setMove(MMID::LAGAVULIN_ATTACK);
-            } else {
-                setMove(MMID::LAGAVULIN_SLEEP);
+                break;
             }
+            setMove(hasStatus<MS::ASLEEP>() ? MMID::LAGAVULIN_SLEEP : MMID::LAGAVULIN_ATTACK);
             bc.noOpRollMove();
             break;
 
@@ -1015,6 +1017,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
         // ************ RED SLAVER ************
 
         case MMID::RED_SLAVER_ENTANGLE:
+            miscInfo = true;  // used entangle
             bc.addToBot(Actions::DebuffPlayer<PS::ENTANGLED>(1));
             bc.addToBot(Actions::RollMove(idx));
             break;
@@ -1132,10 +1135,10 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
 
         case MMID::SNECKO_TAIL_WHIP: // 3
             attackPlayerHelper(bc, asc2 ? 10 : 8);
-            bc.addToBot( Actions::DebuffPlayer<PS::VULNERABLE>(2, true) );
             if (asc17) {
                 bc.addToBot( Actions::DebuffPlayer<PS::WEAK>(2, true) );
             }
+            bc.addToBot( Actions::DebuffPlayer<PS::VULNERABLE>(2, true) );
             bc.addToBot( Actions::RollMove(idx) );
             break;
 
@@ -1264,7 +1267,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
         }
 
         case MMID::THE_CHAMP_GLOAT: {
-            const int strAmts[3] {3, 4, 5};
+            const int strAmts[3] {2, 3, 4};
             buff<MS::STRENGTH>(strAmts[bossDiffIdx]);
             rollMove(bc);
             break;
@@ -1287,7 +1290,6 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
 
         case MMID::THE_COLLECTOR_BUFF: { //3
             const int strAmounts[3] {3, 4, 5};
-            const int blockAmounts[3] {15, 18, 23};
 
             for (int i = 0; i < 2; ++i) {
                 auto &torchHead = bc.monsters.arr[i];
@@ -1296,7 +1298,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
                 }
             }
             buff<MS::STRENGTH>(strAmounts[bossDiffIdx]);
-            addBlock(blockAmounts[bossDiffIdx]);
+            addBlock(asc19 ? 23 : (asc9 ? 18 : 15));
 
             bc.addToBot(Actions::RollMove(idx));
             break;
@@ -1308,9 +1310,9 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             break;
 
         case MMID::THE_COLLECTOR_MEGA_DEBUFF: // 4
-            bc.addToBot( Actions::DebuffPlayer<PS::WEAK>(3, true) );
-            bc.addToBot( Actions::DebuffPlayer<PS::VULNERABLE>(3, true) );
-            bc.addToBot( Actions::DebuffPlayer<PS::FRAIL>(3, true) );
+            bc.addToBot( Actions::DebuffPlayer<PS::WEAK>(asc19 ? 5 : 3, true) );
+            bc.addToBot( Actions::DebuffPlayer<PS::VULNERABLE>(asc19 ? 5 : 3, true) );
+            bc.addToBot( Actions::DebuffPlayer<PS::FRAIL>(asc19 ? 5 : 3, true) );
             bc.addToBot( Actions::RollMove(idx) );
             break;
 
@@ -1350,8 +1352,8 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             break;
 
         case MMID::THE_GUARDIAN_VENT_STEAM:
-            bc.addToBot( Actions::DebuffPlayer<PS::VULNERABLE>(2, true) );
             bc.addToBot( Actions::DebuffPlayer<PS::WEAK>(2, true) );
+            bc.addToBot( Actions::DebuffPlayer<PS::VULNERABLE>(2, true) );
             setMove(MMID::THE_GUARDIAN_WHIRLWIND);
             break;
 
@@ -1437,7 +1439,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
         // ************ DARKLING ************
 
         case MMID::DARKLING_CHOMP:
-            attackPlayerHelper(bc, asc2 ? 9 : 8);
+            attackPlayerHelper(bc, asc2 ? 9 : 8, 2);
             bc.addToBot( Actions::RollMove(idx) );
             break;
 
@@ -1450,8 +1452,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             break;
 
         case MMID::DARKLING_NIP: {
-            const auto damage = miscInfo + (asc2 ? 2 : 0); // todo maybe make d part of the miscInfo at prebattle
-            attackPlayerHelper(bc, damage);
+            attackPlayerHelper(bc, miscInfo);
             bc.addToBot( Actions::RollMove(idx) );
             break;
         }
@@ -1502,7 +1503,6 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             if (getStatus<MS::FADING>() == 1) {
                 bc.addToBot( Actions::SuicideAction(idx, false) );
             }
-            bc.noOpRollMove();
             decrementStatus<MS::FADING>();
             break;
         }
@@ -1511,7 +1511,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
 
         case MMID::WRITHING_MASS_FLAIL: // 2
             attackPlayerHelper(bc, asc2 ? 16 : 15);
-            bc.addToBot( Actions::MonsterGainBlock(idx, asc2 ? 18 : 16) );
+            bc.addToBot( Actions::MonsterGainBlock(idx, asc2 ? 16 : 15) );
             bc.addToBot( Actions::RollMove(idx) );
             break;
 
@@ -1520,6 +1520,10 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             if (!bc.player.hasRelic<R::OMAMORI>()) {
                 if (bc.player.hasRelic<R::DARKSTONE_PERIAPT>()) {
                     bc.player.increaseMaxHp(6);
+                }
+                // The deck gets its Parasite when the fight ends, and the player's gold overwrites the run's then.
+                if (bc.player.hasRelic<R::CERAMIC_FISH>()) {
+                    bc.player.gainGold(bc, 9);
                 }
             }
             rollMove(bc);
@@ -1553,7 +1557,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             break;
 
         case MMID::GIANT_HEAD_IT_IS_TIME: { // 2
-            const auto t = std::min(bc.getMonsterTurnNumber()-5, 6) * 5;
+            const auto t = std::min(bc.getMonsterTurnNumber() - (asc18 ? 4 : 5), 6) * 5;
             const auto damage = (asc3 ? 40 : 30) + t;
             attackPlayerHelper(bc, damage); // todo this can be done immediately
             bc.noOpRollMove();
@@ -1569,7 +1573,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             break;
 
         case MMID::NEMESIS_DEBUFF:
-            Actions::MakeTempCardInDiscard({CardId::BURN}, asc3 ? 5 : 3).actFunc(bc);
+            Actions::MakeTempCardInDiscard({CardId::BURN}, asc18 ? 5 : 3).actFunc(bc);
             rollMove(bc);
             if (!hasStatus<MS::INTANGIBLE>()) {
                 buff<MS::INTANGIBLE>(2);
@@ -1639,8 +1643,8 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
 
         case MMID::TIME_EATER_RIPPLE: // 3
             addBlock(20);
-            bc.player.debuff<PS::WEAK>(1, true);
             bc.player.debuff<PS::VULNERABLE>(1, true);
+            bc.player.debuff<PS::WEAK>(1, true);
             if (asc19) {
                 bc.player.debuff<PS::FRAIL>(1, true);
             }
@@ -1650,18 +1654,21 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
         case MMID::DONU_BEAM:
             attackPlayerHelper(bc, asc4 ? 12 : 10, 2);
             setMove(MonsterMoveId::DONU_CIRCLE_OF_POWER);
+            bc.noOpRollMove();
             break;
 
         case MMID::DONU_CIRCLE_OF_POWER:
             bc.monsters.arr[0].buff<MS::STRENGTH>(3); // shouldn't matter if deca is dead
             buff<MS::STRENGTH>(3);
             setMove(MonsterMoveId::DONU_BEAM);
+            bc.noOpRollMove();
             break;
 
         case MMID::DECA_BEAM:
             attackPlayerHelper(bc, asc4 ? 12 : 10, 2);
             bc.addToBot( Actions::MakeTempCardInDiscard(CardId::DAZED, 2) );
             setMove(MonsterMoveId::DECA_SQUARE_OF_PROTECTION);
+            bc.noOpRollMove();
             break;
 
         case MMID::DECA_SQUARE_OF_PROTECTION: {
@@ -1674,6 +1681,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
                 donu.buff<MS::PLATED_ARMOR>(3);
             }
             setMove(MonsterMoveId::DECA_BEAM);
+            bc.noOpRollMove();
             break;
         }
 
@@ -1981,7 +1989,7 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
 
             if (asc17) {
                 if (roll < 40) {
-                    if (lastTwoMoves(MMID::ACID_SLIME_M_CORROSIVE_SPIT)) {
+                    if (lastTwoMoves(MMID::ACID_SLIME_L_CORROSIVE_SPIT)) {
                         if (bc.aiRng.randomBoolean(0.6F)) {
                             return (MMID::ACID_SLIME_L_TACKLE);
                         } else {
@@ -2047,8 +2055,7 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
             if (roll >= 40 && !lastTwoMoves(MMID::BLUE_SLAVER_STAB)) {
                 return (MMID::BLUE_SLAVER_STAB);
 
-            } else if ( !lastTwoMoves(MMID::BLUE_SLAVER_RAKE) ||
-                (asc17 && !lastMove(MMID::BLUE_SLAVER_RAKE)) ) {
+            } else if (asc17 ? !lastMove(MMID::BLUE_SLAVER_RAKE) : !lastTwoMoves(MMID::BLUE_SLAVER_RAKE)) {
                 return (MMID::BLUE_SLAVER_RAKE);
 
             } else {
@@ -2180,10 +2187,15 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
             // 2 heal
             // 3 buff
 
-            const auto healNeedAmt = asc17 ? 21 : 16;
-            const auto &knight = bc.monsters.arr[0];
+            int missingHp = 0;
+            for (int i = 0; i < bc.monsters.monsterCount; ++i) {
+                const auto &m = bc.monsters.arr[i];
+                if (!m.isDeadOrEscaped()) {
+                    missingHp += m.maxHp - m.curHp;
+                }
+            }
 
-            if (maxHp-curHp >= healNeedAmt || knight.isAlive() && knight.maxHp-knight.curHp >= healNeedAmt) {
+            if (missingHp > (asc17 ? 20 : 15) && !lastTwoMoves(MMID::MYSTIC_HEAL)) {
                 return (MMID::MYSTIC_HEAL);
                 break;
             }
@@ -2260,16 +2272,16 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
                     ++stabCount;
                     return (MMID::BOOK_OF_STABBING_MULTI_STAB);
                 } else {
-                    return (MMID::BOOK_OF_STABBING_SINGLE_STAB);
                     if (asc18) {
                         ++stabCount;
                     }
+                    return (MMID::BOOK_OF_STABBING_SINGLE_STAB);
                 }
             } else if (lastTwoMoves(MMID::BOOK_OF_STABBING_MULTI_STAB)) {
-                return (MMID::BOOK_OF_STABBING_SINGLE_STAB);
                 if (asc18) {
                     ++stabCount;
                 }
+                return (MMID::BOOK_OF_STABBING_SINGLE_STAB);
             } else {
                 ++stabCount;
                 return (MMID::BOOK_OF_STABBING_MULTI_STAB);
@@ -2368,7 +2380,10 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
                     }
 
                 } else if (lastMove(MMID::GREMLIN_LEADER_STAB)) {
-                    const auto roll2 = bc.aiRng.random(0, 80);
+                    auto roll2 = bc.aiRng.random(0, 80);
+                    while (roll2 == 80) {  // 80 lands back in this same branch of the game's getMove
+                        roll2 = bc.aiRng.random(0, 80);
+                    }
                     if (roll2 < 50) {
                         return (MMID::GREMLIN_LEADER_RALLY);
                     } else {
@@ -2410,8 +2425,8 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
             }
 
             if (asc18) {
-                if (!lastTwoMoves(MMID::GREMLIN_NOB_SKULL_BASH)) {
-                    return (MMID::GREMLIN_NOB_RUSH);
+                if (!lastMove(MMID::GREMLIN_NOB_SKULL_BASH) && !lastMoveBefore(MMID::GREMLIN_NOB_SKULL_BASH)) {
+                    return (MMID::GREMLIN_NOB_SKULL_BASH);
                     break;
                 }
 
@@ -2514,6 +2529,7 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
             // 2 attack
             // 3 scythe
             // 4 debuff
+            // scytheCooldown is set to 2 and drops at the start of getMove, so it only rules out the very next move.
 
             if (firstTurn()) {
                 if (roll < 50) {
@@ -2524,7 +2540,7 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
             }
 
             if (roll < 30) {
-                if (!eitherLastTwo(MMID::NEMESIS_SCYTHE)) {
+                if (!lastMove(MMID::NEMESIS_SCYTHE)) {
                     return MMID::NEMESIS_SCYTHE;
 
                 } else if (bc.aiRng.randomBoolean()) {
@@ -2546,7 +2562,7 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
                 if (!lastTwoMoves(MMID::NEMESIS_ATTACK)) {
                     return MMID::NEMESIS_ATTACK;
 
-                } else if (!bc.aiRng.randomBoolean() || eitherLastTwo(MMID::NEMESIS_SCYTHE)) {
+                } else if (!bc.aiRng.randomBoolean() || lastMove(MMID::NEMESIS_SCYTHE)) {
                     return MMID::NEMESIS_DEBUFF;
 
                 } else {
@@ -2558,7 +2574,7 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
                 return MMID::NEMESIS_DEBUFF;
             }
 
-            if (bc.aiRng.randomBoolean() && !eitherLastTwo(MMID::NEMESIS_SCYTHE)) {
+            if (bc.aiRng.randomBoolean() && !lastMove(MMID::NEMESIS_SCYTHE)) {
                 return MMID::NEMESIS_SCYTHE;
             }
 
@@ -2606,7 +2622,7 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
             }
 
             int myRoll = roll;
-            const bool canSpawn = bc.monsters.monstersAlive < 4;
+            const bool canSpawn = bc.monsters.monstersAlive < 5; // up to three others besides itself
 
             while (true) {
                 if (myRoll < 33) {
@@ -2668,17 +2684,17 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
                 break;
             }
 
-            int roll2 = 100;
+            int myRoll = roll;
 
             if (roll < 20) {
                 if (!lastMove(MMID::SHELLED_PARASITE_FELL)) {
                     return (MMID::SHELLED_PARASITE_FELL);
                     break;
                 }
-                roll2 = bc.aiRng.random(20,99);
+                myRoll = bc.aiRng.random(20,99);
             }
 
-            if (roll < 60 || roll2 < 60) {
+            if (myRoll < 60) {
                 if (!lastTwoMoves(MMID::SHELLED_PARASITE_DOUBLE_STRIKE)) {
                     return (MMID::SHELLED_PARASITE_DOUBLE_STRIKE);
                 } else {
@@ -2720,10 +2736,10 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
                     } else {
                         return (MMID::SNAKE_PLANT_CHOMP);
                     }
-                } else if (!lastTwoMoves(MMID::SNAKE_PLANT_ENFEEBLING_SPORES)) {
-                    return (MMID::SNAKE_PLANT_ENFEEBLING_SPORES);
-                } else {
+                } else if (lastMove(MMID::SNAKE_PLANT_ENFEEBLING_SPORES) || lastMoveBefore(MMID::SNAKE_PLANT_ENFEEBLING_SPORES)) {
                     return (MMID::SNAKE_PLANT_CHOMP);
+                } else {
+                    return (MMID::SNAKE_PLANT_ENFEEBLING_SPORES);
                 }
                 break;
             }
@@ -2782,10 +2798,10 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
             } else if (roll >= 75 && !usedEntangle) {
                 return (MMID::RED_SLAVER_ENTANGLE);
 
-            } else if (roll >= 50 && usedEntangle && !lastTwoMoves(MMID::RED_SLAVER_STAB)) {
+            } else if (roll >= 55 && usedEntangle && !lastTwoMoves(MMID::RED_SLAVER_STAB)) {
                 return (MMID::RED_SLAVER_STAB);
 
-            } else if (!lastTwoMoves(MMID::RED_SLAVER_SCRAPE) || (asc17 && !lastMove(MMID::RED_SLAVER_SCRAPE))) {
+            } else if (asc17 ? !lastMove(MMID::RED_SLAVER_SCRAPE) : !lastTwoMoves(MMID::RED_SLAVER_SCRAPE)) {
                 return (MMID::RED_SLAVER_SCRAPE);
 
             } else {
@@ -3045,14 +3061,16 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
         }
 
         case MonsterId::SPIRE_GROWTH: {
-            const auto useConstrict = !bc.player.hasStatus<PS::CONSTRICTED>()
-                                      && !lastMove(MMID::SPIRE_GROWTH_CONSTRICT)
-                                      && (asc17 || roll >= 50);
-            if (useConstrict) {
+            const auto canConstrict = !bc.player.hasStatus<PS::CONSTRICTED>()
+                                      && !lastMove(MMID::SPIRE_GROWTH_CONSTRICT);
+            if (asc17 && canConstrict) {
                 return (MMID::SPIRE_GROWTH_CONSTRICT);
 
             } else if (roll < 50 && !lastTwoMoves(MMID::SPIRE_GROWTH_QUICK_TACKLE)) {
                 return (MMID::SPIRE_GROWTH_QUICK_TACKLE);
+
+            } else if (canConstrict) {
+                return (MMID::SPIRE_GROWTH_CONSTRICT);
 
             } else if (!lastTwoMoves(MMID::SPIRE_GROWTH_SMASH)) {
                 return (MMID::SPIRE_GROWTH_SMASH);
@@ -3147,10 +3165,8 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
 
                 if (!lastMove(MMID::WRITHING_MASS_FLAIL)) {
                     return MMID::WRITHING_MASS_FLAIL;
-
-                } else {
-                    return (MMID::WRITHING_MASS_WITHER);
                 }
+                myRoll = bc.aiRng.random(0, 69);
             }
         }
 
@@ -3158,7 +3174,7 @@ MMID Monster::getMoveForRoll(BattleContext &bc, int &monsterData, const int roll
             // 1 glare
             // 2 it is time
             // 3 count
-            if (bc.getMonsterTurnNumber() >= 4) {
+            if (bc.getMonsterTurnNumber() >= (asc18 ? 3 : 4)) {
                 return MMID::GIANT_HEAD_IT_IS_TIME;
             }
 
@@ -3361,8 +3377,11 @@ void Monster::largeSlimeSplit(BattleContext &bc, const MonsterId mediumSlimeType
     bc.monsters.monstersAlive++;
     bc.monsters.monsterCount = std::min(bc.monsters.monsterCount+1, 4);
 
-    bc.noOpRollMove();
-    bc.monsters.extraRollMoveOnTurn.set(idx2, true);
+    // SpikeSlime_L's split ends with a RollMoveAction, so the dead slime consumes one more AI roll. AcidSlime_L's sets
+    // its move directly instead.
+    if (mediumSlimeType == MonsterId::SPIKE_SLIME_M) {
+        bc.noOpRollMove();
+    }
     bc.monsterTurnIdx++;
 }
 
@@ -3487,6 +3506,12 @@ void Monster::stasisAction(BattleContext &bc) {
     }
 
     cards.notifyRemoveFromCombat(stasisCard);
+
+    // ApplyStasisAction looks for two empty piles on every frame. If it just took the last card in them, the next frame
+    // ends the action before it applies the power, and the card stays in limbo for the rest of the fight.
+    if (cards.drawPile.empty() && cards.discardPile.empty()) {
+        return;
+    }
     cards.stasisCards[std::min(1, idx)] = stasisCard;
 
 #ifdef sts_asserts
@@ -3509,12 +3534,17 @@ void Monster::returnStasisCard(BattleContext &bc) {
     assert(stasisCard.id != CardId::INVALID);
 #endif
 
-    bc.cards.notifyAddCardToCombat(stasisCard);
-    bc.moveToHandHelper(stasisCard);
+    // StasisPower.onDeath queues this, so the card lands behind anything already queued, such as the next turn's draw.
+    const CardInstance returned = stasisCard;
     stasisCard = {CardId::INVALID};
+    bc.addToBot({[=](BattleContext &b) {
+        CardInstance card = returned;
+        b.cards.notifyAddCardToCombat(card);
+        b.moveToHandHelper(card);
+    }});
 }
 
-void reptoSummonHelper(const BattleContext &bc, int daggerIdxs[2], int daggerCount) {
+int reptoSummonHelper(const BattleContext &bc, int daggerIdxs[2], int daggerCount) {
     constexpr int searchOrder[4] = {4, 1, 3, 0};
 
     int openSlotsFound = 0;
@@ -3527,20 +3557,17 @@ void reptoSummonHelper(const BattleContext &bc, int daggerIdxs[2], int daggerCou
         }
 
         if (openSlotsFound == daggerCount) {
-            return;
+            break;
         }
     }
-
-#ifdef sts_asserts
-    assert(false); // should always return first
-#endif
+    return openSlotsFound;
 }
 
 void Monster::reptomancerSummon(BattleContext &bc, int daggerCount) {
     int daggerIdxs[2];
-    reptoSummonHelper(bc, daggerIdxs, daggerCount);
+    const int spawned = reptoSummonHelper(bc, daggerIdxs, daggerCount);
 
-    for (int i = 0; i < daggerCount; ++i) {
+    for (int i = 0; i < spawned; ++i) {
         const auto daggerIdx = daggerIdxs[i];
         auto &dagger = bc.monsters.arr[daggerIdx];
         dagger = Monster();

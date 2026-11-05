@@ -527,6 +527,7 @@ namespace sts {
             case MMID::WRITHING_MASS_FLAIL:
             case MMID::WRITHING_MASS_MULTI_STRIKE:
             case MMID::WRITHING_MASS_STRONG_STRIKE:
+            case MMID::WRITHING_MASS_WITHER:
                 return true;
 
             default:
