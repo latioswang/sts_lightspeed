@@ -3535,7 +3535,9 @@ void Monster::returnStasisCard(BattleContext &bc) {
 #endif
 
     // StasisPower.onDeath queues this, so the card lands behind anything already queued, such as the next turn's draw.
-    const CardInstance returned = stasisCard;
+    // The card comes back through a MakeTemp action, whose constructor applies Master Reality.
+    CardInstance returned = stasisCard;
+    bc.upgradeIfMasterReality(returned);
     stasisCard = {CardId::INVALID};
     bc.addToBot({[=](BattleContext &b) {
         CardInstance card = returned;
