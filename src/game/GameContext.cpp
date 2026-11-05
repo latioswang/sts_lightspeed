@@ -2320,7 +2320,7 @@ void GameContext::chooseNeowOption(const Neow::Option &o) {
             break;
 
         case Neow::Drawback::LOSE_STARTER_RELIC:
-            relics.remove(getStarterRelicForClass(cc));
+            relics.remove(relics.relics.front().id); // NeowReward takes whatever is in slot 0
             break;
 
         case Neow::Drawback::NONE:
