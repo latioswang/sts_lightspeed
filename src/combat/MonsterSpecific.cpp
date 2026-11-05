@@ -1343,13 +1343,25 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             setMove(MMID::THE_GUARDIAN_TWIN_SLAM);
             break;
 
-        case MMID::THE_GUARDIAN_TWIN_SLAM:
+        case MMID::THE_GUARDIAN_TWIN_SLAM: {
+            // Its ChangeStateAction goes first and reopens the threshold, so damage from the slams' own hits (thorns,
+            // Static Discharge) counts. The Mode Shift it applies and the Reset Threshold after come last.
+            miscInfo += 10;
+            buff<MS::MODE_SHIFT>(0);  // setStatus alone doesn't mark it held
+            setStatus<MS::MODE_SHIFT>(miscInfo);
             attackPlayerHelper(bc, 8, 2);
             removeStatus<MS::SHARP_HIDE>();
-            miscInfo += 10;
             setMove(MMID::THE_GUARDIAN_WHIRLWIND);
-            bc.addToBot( Actions::BuffEnemy<MS::MODE_SHIFT>(idx, miscInfo) );
+            const int guardianIdx = idx;
+            const int threshold = miscInfo;
+            bc.addToBot( Action{[=] (BattleContext &b) {
+                auto &guardian = b.monsters.arr[guardianIdx];
+                if (guardian.hasStatus<MS::MODE_SHIFT>()) {  // otherwise broken already, and going defensive again
+                    guardian.setStatus<MS::MODE_SHIFT>(threshold);
+                }
+            }} );
             break;
+        }
 
         case MMID::THE_GUARDIAN_VENT_STEAM:
             bc.addToBot( Actions::DebuffPlayer<PS::WEAK>(2, true) );
