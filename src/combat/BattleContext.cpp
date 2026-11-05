@@ -3495,7 +3495,21 @@ void BattleContext::afterMonsterTurns() {
     player.applyStartOfTurnRelics(*this);
 
     // player applyStartOfTurnPreDrawCards() // no cards implement this
-    // player.applyStartOfTurnCards() // only Eviscerate implements this
+    // player.applyStartOfTurnCards(): only Eviscerate implements it, and it puts the card's cost back wherever it is.
+    const auto resetEviscerate = [](CardInstance &c) {
+        if (c.getId() == CardId::EVISCERATE) {
+            c.setCostForTurn(c.cost);
+        }
+    };
+    for (auto &c : cards.drawPile) {
+        resetEviscerate(c);
+    }
+    for (int i = 0; i < cards.cardsInHand; ++i) {
+        resetEviscerate(cards.hand[i]);
+    }
+    for (auto &c : cards.discardPile) {
+        resetEviscerate(c);
+    }
 
     player.applyStartOfTurnPowers(*(this));
 
