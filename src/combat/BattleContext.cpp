@@ -3924,6 +3924,8 @@ void BattleContext::applyMakeCopy(CardInstance &c) const {
     c.tookDamageTimes(player.timesDamagedThisCombat);
     if (c.getId() == CardId::EVISCERATE) {
         c.setCostForTurn(c.cost - player.cardsDiscardedThisTurn);
+    } else if (c.getId() == CardId::FORCE_FIELD) {
+        c.updateCost(-player.powersPlayedThisCombat);  // its constructor counts cardsPlayedThisCombat
     }
 }
 
