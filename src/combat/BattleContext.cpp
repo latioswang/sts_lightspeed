@@ -652,6 +652,14 @@ void BattleContext::updateRelicsOnExit(GameContext &g) const {
                 }
                 break;
 
+            case RelicId::FACE_OF_CLERIC:
+                // AbstractPlayer.onVictory runs for a Smoke Bomb escape too.
+                if (outcome == Outcome::PLAYER_VICTORY) {
+                    g.maxHp += 1;
+                    g.playerHeal(victoryHeal(1));
+                }
+                break;
+
             default:
                 break;
         }

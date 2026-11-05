@@ -1103,15 +1103,14 @@ void GameContext::enterBattle(MonsterEncounter encounter) {
     screenState = ScreenState::BATTLE;
     info.encounter = encounter;
     if (skipBattles) {
+        if (hasRelic(RelicId::FACE_OF_CLERIC)) {  // a real fight does this as it exits
+            playerIncreaseMaxHp(1);
+        }
         afterBattle();
     }
 }
 
 void GameContext::afterBattle() {
-    if (hasRelic(RelicId::FACE_OF_CLERIC)) {
-        playerIncreaseMaxHp(1);
-    }
-
     switch (curRoom) {
         case Room::MONSTER: {
             regainControlAction = returnToMapAction;
