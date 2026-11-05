@@ -63,10 +63,6 @@ namespace sts {
     static constexpr CardId curseCardPool[] = { CardId::REGRET, CardId::INJURY, CardId::SHAME, CardId::PARASITE, CardId::NORMALITY, CardId::DOUBT, CardId::WRITHE, CardId::PAIN, CardId::DECAY, CardId::CLUMSY };
     static constexpr int curseCardPoolSize = 10;
 
-
-    static constexpr CardId srcColorlessCardPool[] = {CardId::APOTHEOSIS, CardId::BANDAGE_UP, CardId::BLIND, CardId::CHRYSALIS, CardId::DARK_SHACKLES, CardId::DEEP_BREATH, CardId::DISCOVERY, CardId::DRAMATIC_ENTRANCE, CardId::ENLIGHTENMENT, CardId::FINESSE, CardId::FLASH_OF_STEEL, CardId::FORETHOUGHT, CardId::GOOD_INSTINCTS, CardId::HAND_OF_GREED, CardId::IMPATIENCE, CardId::JACK_OF_ALL_TRADES, CardId::MADNESS, CardId::MAGNETISM, CardId::MASTER_OF_STRATEGY, CardId::MAYHEM, CardId::METAMORPHOSIS, CardId::MIND_BLAST, CardId::PANACEA, CardId::PANACHE, CardId::PANIC_BUTTON, CardId::PURITY, CardId::SADISTIC_NATURE, CardId::SECRET_TECHNIQUE, CardId::SECRET_WEAPON, CardId::SWIFT_STRIKE, CardId::THE_BOMB, CardId::THINKING_AHEAD, CardId::TRANSMUTATION, CardId::TRIP, CardId::VIOLENCE, };
-    static constexpr int srcColorlessCardPoolSize = 35;
-
     static constexpr std::array<CardId, 35> baseColorlessPool = {CardId::DARK_SHACKLES, CardId::SADISTIC_NATURE, CardId::PANIC_BUTTON, CardId::TRIP, CardId::DRAMATIC_ENTRANCE, CardId::IMPATIENCE, CardId::THE_BOMB, CardId::BLIND, CardId::BANDAGE_UP, CardId::SECRET_TECHNIQUE, CardId::DEEP_BREATH, CardId::VIOLENCE, CardId::PANACHE, CardId::SECRET_WEAPON, CardId::APOTHEOSIS, CardId::MAYHEM, CardId::HAND_OF_GREED, CardId::FLASH_OF_STEEL, CardId::FORETHOUGHT, CardId::ENLIGHTENMENT, CardId::PURITY, CardId::PANACEA, CardId::TRANSMUTATION, CardId::CHRYSALIS, CardId::DISCOVERY, CardId::FINESSE, CardId:: MAGNETISM, CardId:: MASTER_OF_STRATEGY, CardId::GOOD_INSTINCTS, CardId::SWIFT_STRIKE, CardId::JACK_OF_ALL_TRADES, CardId::METAMORPHOSIS, CardId::MIND_BLAST, CardId::THINKING_AHEAD, CardId::MADNESS };
 
     namespace RarityCardPool {

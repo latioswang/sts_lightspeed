@@ -1710,7 +1710,7 @@ Card GameContext::getTransformedCard(Random &rng, CardId exclude, bool autoUpgra
     if (color == CardColor::CURSE) {
         return getRandomCurse(rng, exclude);
     } else  if (color == CardColor::COLORLESS) {
-        return returnTrulyRandomColorlessCardFromAvailable(rng, exclude);
+        return Card(returnTrulyRandomColorlessCardFromAvailable(rng, exclude), autoUpgrade ? 1 : 0);
     }
 
     CardId transformCard = returnTrulyRandomCardFromAvailable(rng, exclude);

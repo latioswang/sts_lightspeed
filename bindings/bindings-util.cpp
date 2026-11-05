@@ -95,8 +95,8 @@ namespace sts {
         }
 
         std::vector<CardId> colorlessCards;
-        for (int i = 0; i < srcColorlessCardPoolSize; ++i) {
-            colorlessCards.push_back(srcColorlessCardPool[i]);
+        for (std::size_t i = 0; i < baseColorlessPool.size(); ++i) {
+            colorlessCards.push_back(baseColorlessPool[i]);
         }
         std::sort(colorlessCards.begin(), colorlessCards.end(), [](auto a, auto b) {
             return std::string(getCardEnumName(a)) < std::string(getCardEnumName(b));
