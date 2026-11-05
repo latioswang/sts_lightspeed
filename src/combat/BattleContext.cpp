@@ -4174,14 +4174,8 @@ void BattleContext::queuePurgeCard(const CardInstance &c, int target) {
 }
 
 void BattleContext::addPurgeCardToCardQueue(const CardQueueItem &item) {
-    if (cardQueue.size > 0) {
-        auto temp = cardQueue.front();
-        cardQueue.front() = item;
-        cardQueue.pushFront(temp);
-    } else {
-        cardQueue.pushFront(item);
-    }
-
+    // The game adds it at index 1 with the card being played still at index 0. Here that card has already left the queue.
+    cardQueue.pushFront(item);
 }
 
 void BattleContext::noOpRollMove() {
