@@ -3255,7 +3255,8 @@ void GameContext::chooseEventOption(int idx) {
 
         case Event::NOTE_FOR_YOURSELF:
             if (idx == 0) {
-                deck.obtain(*this, noteForYourselfCard);
+                // The event adds the card itself and runs the relics' onObtainCard. Omamori is in the obtain effect.
+                deck.obtain(*this, noteForYourselfCard, 1, false);
                 openCardSelectScreen(CardSelectScreenType::REMOVE, 1);
             } else if (idx == 1) {
                 regainControl();

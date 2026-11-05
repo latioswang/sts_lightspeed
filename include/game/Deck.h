@@ -51,7 +51,7 @@ namespace sts {
         void upgradeRandomCards(Random &miscRng, int count);
         void transformRandomCards(Random &miscRng, int count);
 
-        void obtain(GameContext &gc, Card card, int count=1); // for all cards
+        void obtain(GameContext &gc, Card card, int count=1, bool omamoriCanStop=true); // for all cards
         void obtainRaw(Card card);
 
         void remove(GameContext &gc, int idx);

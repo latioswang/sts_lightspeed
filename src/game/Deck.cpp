@@ -119,7 +119,7 @@ void Deck::transformRandomCards(Random &miscRng, int count) {
     // todo
 }
 
-void Deck::obtain(GameContext &gc, Card card, int count) {
+void Deck::obtain(GameContext &gc, Card card, int count, bool omamoriCanStop) {
     const auto type = card.getType();
 
     // A new Force Field is made cheaper by the Power cards played in the last fight, and keeps that for good.
@@ -159,7 +159,7 @@ void Deck::obtain(GameContext &gc, Card card, int count) {
             break;
 
         case CardType::CURSE:
-            if (gc.relics.has(RelicId::OMAMORI)) {
+            if (omamoriCanStop && gc.relics.has(RelicId::OMAMORI)) {
                 int &omamoriCount = gc.relics.getRelicValueRef(RelicId::OMAMORI);
                 if (omamoriCount > 0) {
                     int decAmt = std::min(count, omamoriCount);
