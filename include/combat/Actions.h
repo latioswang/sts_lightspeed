@@ -129,6 +129,8 @@ namespace sts {
         static Action BarrageAction(int targetIdx, int damage);
         static Action CompileDriverAction(int cardsPerOrb);
         static Action ForTheEyesAction(int targetIdx, int weak);
+        static Action MonsterLosesFlight(int idx);
+        static Action MonsterLosesPlatedArmor(int idx);
         static Action FissionAction(bool upgraded);
         static Action FtlAction(int targetIdx, int damage, int cardPlayCount);
         static Action GashAction(int amount); // Claw

@@ -366,24 +366,15 @@ void Monster::attackedUnblockedHelper(BattleContext &bc, int damage) { // todo, 
         damage = std::min(damage, getStatus<MS::INVINCIBLE>());
         setStatus<MS::INVINCIBLE>(getStatus<MS::INVINCIBLE>() - damage);
 
-    } else if (hasStatus<MS::PLATED_ARMOR>()) {
-        decrementStatus<MS::PLATED_ARMOR>();
-        if(!hasStatus<MS::PLATED_ARMOR>() && id == MonsterId::SHELLED_PARASITE) {
-            setMove(MMID::SHELLED_PARASITE_STUNNED);
-        }
+    } else if (hasStatus<MS::PLATED_ARMOR>()) { // wasHPLost queues ReducePowerAction behind what's already queued
+        bc.addToBot( Actions::MonsterLosesPlatedArmor(idx) );
 
     } else if (hasStatus<MS::CURL_UP>() && damage < curHp) { // CurlUpPower.onAttacked: not on a killing blow
         bc.addToBot(Actions::MonsterGainBlock(this->idx, getStatus<MS::CURL_UP>()) );
         setHasStatus<MS::CURL_UP>(false);
 
-    } else if (hasStatus<MS::FLIGHT>() && damage > 0) {
-        auto flight = getStatus<MS::FLIGHT>();
-        if (flight == 1) { // the power is gone, so a grounded byrd takes full damage
-            setMove(MMID::BYRD_STUNNED);
-            removeStatus<MS::FLIGHT>();
-        } else {
-            setStatus<MS::FLIGHT>(flight-1);
-        }
+    } else if (hasStatus<MS::FLIGHT>() && damage > 0) { // onAttacked queues ReducePowerAction behind what's already queued
+        bc.addToBot( Actions::MonsterLosesFlight(idx) );
 
     } else if (hasStatus<MS::MALLEABLE>() || hasStatus<MS::REACTIVE>()) {
         if (hasStatus<MS::MALLEABLE>()) {

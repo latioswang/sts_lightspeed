@@ -548,6 +548,37 @@ Action Actions::CompileDriverAction(int cardsPerOrb) {
     }};
 }
 
+// One stack of each comes off after the actions queued when the hit landed, so the rest of a card still sees the power and
+// the monster's old intent. The power's onRemove then queues the change of move behind that.
+Action Actions::MonsterLosesFlight(int idx) {
+    return {[=] (BattleContext &bc) {
+        auto &m = bc.monsters.arr[idx];
+        if (!m.isAlive() || !m.hasStatus<MS::FLIGHT>()) {
+            return;
+        }
+        const auto flight = m.getStatus<MS::FLIGHT>();
+        if (flight > 1) {
+            m.setStatus<MS::FLIGHT>(flight - 1);
+            return;
+        }
+        m.removeStatus<MS::FLIGHT>();
+        bc.addToBot({[=] (BattleContext &bc) { bc.monsters.arr[idx].setMove(MMID::BYRD_STUNNED); }});
+    }};
+}
+
+Action Actions::MonsterLosesPlatedArmor(int idx) {
+    return {[=] (BattleContext &bc) {
+        auto &m = bc.monsters.arr[idx];
+        if (!m.isAlive() || !m.hasStatus<MS::PLATED_ARMOR>()) {
+            return;
+        }
+        m.decrementStatus<MS::PLATED_ARMOR>();
+        if (!m.hasStatus<MS::PLATED_ARMOR>() && m.id == MonsterId::SHELLED_PARASITE) {
+            bc.addToBot({[=] (BattleContext &bc) { bc.monsters.arr[idx].setMove(MMID::SHELLED_PARASITE_STUNNED); }});
+        }
+    }};
+}
+
 Action Actions::ForTheEyesAction(int targetIdx, int weak) {
     return {[=] (BattleContext &bc) {
         if (bc.monsters.arr[targetIdx].isAttacking()) {
