@@ -41,12 +41,15 @@ struct StatusList {
     [[nodiscard]] auto end() const { return items.begin() + count; }
 };
 
+// A Nightmare has no status, since each one is a power of its own, so it holds its place in the order with this.
+constexpr PlayerStatus kNightmareInOrder = PS::INVALID;
+
 // What's in statusMap, in the game's order. A status the order doesn't know about comes last.
-StatusList powersInGameOrder(const Player &p) {
+StatusList powersInGameOrder(const Player &p, bool withNightmares = false) {
     StatusList list;
     const auto ordered = p.powerOrder.begin() + p.powerOrderCount;
     for (auto it = p.powerOrder.begin(); it != ordered; ++it) {
-        if (p.statusMap.count(*it)) list.add(*it);
+        if (p.statusMap.count(*it) || (withNightmares && *it == kNightmareInOrder)) list.add(*it);
     }
     for (const auto &entry : p.statusMap) {
         if (std::find(p.powerOrder.begin(), ordered, entry.first) == ordered) list.add(entry.first);
@@ -582,6 +585,7 @@ void Player::addNightmare(const CardInstance &c) {
         nightmareCards[nightmareCount] = c;
         nightmareCards[nightmareCount].setCostForTurn(c.cost); // NightmarePower runs resetAttributes on its copy
         ++nightmareCount;
+        notePowerGained(kNightmareInOrder);
     }
 }
 
@@ -828,7 +832,15 @@ void Player::applyStartOfTurnRelics(BattleContext &bc) {
 
 void Player::applyStartOfTurnPowers(BattleContext &bc) {
     // ****** Player powers atStartOfTurn ******
-    for (const PlayerStatus status : powersInGameOrder(*this)) {
+    int nightmaresDone = 0;
+    const auto nextNightmare = [&]() { // MakeTempCardInHandAction makes a stat equivalent copy of the power's card
+        bc.addToBot( Actions::MakeTempCardInHand(nightmareCards[nightmaresDone++], NIGHTMARE_COPIES) );
+    };
+    for (const PlayerStatus status : powersInGameOrder(*this, true)) {
+        if (status == kNightmareInOrder) {
+            nextNightmare();
+            continue;
+        }
         if (!hasStatusRuntime(status)) {
             continue;
         }
@@ -941,8 +953,11 @@ void Player::applyStartOfTurnPowers(BattleContext &bc) {
 
     }
 
-    for (int i = 0; i < nightmareCount; ++i) { // MakeTempCardInHandAction makes a stat equivalent copy of the power's card each time
-        bc.addToBot( Actions::MakeTempCardInHand(nightmareCards[i], NIGHTMARE_COPIES) );
+    while (nightmaresDone < nightmareCount) { // the order was full when it came
+        nextNightmare();
+    }
+    for (int i = 0; i < nightmareCount; ++i) {
+        notePowerLost(kNightmareInOrder);
     }
     nightmareCount = 0;
 }
