@@ -2188,9 +2188,10 @@ void BattleContext::useSkillCard() {
             break;
 
         case CardId::STACK: { // Stack.applyPowers works its base block out from the discard pile
-            // PlayTopCardAction runs applyPowers as it takes the card, before the cards taken ahead of it have been played
-            const bool offTheTop = curCardQueueItem.autoplay && c.specialData > 0;
-            const int discarded = offTheTop ? c.specialData - 1 : static_cast<int>(cards.discardPile.size());
+            // PlayTopCardAction runs applyPowers as it takes the card, before the cards taken ahead of it have been played.
+            // A copy keeps the original's base block, from before the original lands on the pile.
+            const bool baseIsSet = curCardQueueItem.autoplay && c.specialData > 0;
+            const int discarded = baseIsSet ? c.specialData - 1 : static_cast<int>(cards.discardPile.size());
             addToBot( Actions::GainBlock(calculateCardBlock(discarded + (up ? 3 : 0))) );
             break;
         }
@@ -4127,6 +4128,9 @@ int BattleContext::calculateCardBlock(int baseBlock) const {
 void BattleContext::queuePurgeCard(const CardInstance &c, int target) {
     CardQueueItem item;
     item.card = c;
+    if (c.getId() == CardId::STACK && c.specialData == 0) {
+        item.card.specialData = static_cast<std::int16_t>(cards.discardPile.size() + 1);
+    }
     item.purgeOnUse = true;
     item.target = target;
     item.energyOnUse = curCardQueueItem.energyOnUse;
