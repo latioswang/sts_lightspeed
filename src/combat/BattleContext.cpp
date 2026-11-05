@@ -132,7 +132,6 @@ void BattleContext::initRelics(const GameContext &gc) {
 
             case R::BAG_OF_MARBLES:
             case R::BAG_OF_PREPARATION:
-            case R::CLOCKWORK_SOUVENIR:
             case R::GREMLIN_VISAGE:
             case R::RED_MASK:
             case R::RING_OF_THE_SNAKE:
@@ -325,11 +324,6 @@ void BattleContext::initRelics(const GameContext &gc) {
                 p.gainEnergy(1);
                 break;
 
-            case R::MUTAGENIC_STRENGTH: // this appears to be applied before clockwork if it was acquired first
-                p.buff<PS::STRENGTH>(3);
-                p.debuff<PS::LOSE_STRENGTH>(3);
-                break;
-
             case R::NEOWS_LAMENT: // remember to decrement somewhere else
                 if (r.data > 0) {
                     for (int i = 0; i < monsters.monsterCount; ++i) {
@@ -407,6 +401,18 @@ void BattleContext::initRelics(const GameContext &gc) {
     }
 
     // todo maybe move this to proper place -nvm drawCards is added below this
+    // Both of these go on top of the queue at battle start, so the later relic acts first. If Clockwork Souvenir came after
+    // Mutagenic Strength, its Artifact stops the Strength from wearing off. Gremlin Visage's Weak waits at the bottom of the
+    // queue, so the Artifact can stop that too. Snecko Eye's Confused comes before all this, and Artifact doesn't see it.
+    for (auto r = gc.relics.relics.rbegin(); r != gc.relics.relics.rend(); ++r) {
+        if (r->id == R::CLOCKWORK_SOUVENIR) {
+            p.buff<PS::ARTIFACT>(1);
+        } else if (r->id == R::MUTAGENIC_STRENGTH) {
+            p.debuff<PS::LOSE_STRENGTH>(3);
+            p.buff<PS::STRENGTH>(3);
+        }
+    }
+
     for (auto r : atBattleStartPreDraw) {
         switch (r) {
             case R::HOLY_WATER:
@@ -440,10 +446,6 @@ void BattleContext::initRelics(const GameContext &gc) {
 
             case R::BAG_OF_PREPARATION:
                 addToBot( Actions::DrawCards(2) );
-                break;
-
-            case R::CLOCKWORK_SOUVENIR:
-                addToBot( Actions::BuffPlayer<PS::ARTIFACT>(1) );
                 break;
 
             case R::GREMLIN_VISAGE:
