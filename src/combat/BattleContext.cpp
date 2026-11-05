@@ -4156,8 +4156,14 @@ int BattleContext::calculateCardBlock(int baseBlock) const {
 void BattleContext::queuePurgeCard(const CardInstance &c, int target) {
     CardQueueItem item;
     item.card = c;
-    if (c.getId() == CardId::STACK && c.specialData == 0) {
-        item.card.specialData = static_cast<std::int16_t>(cards.discardPile.size() + 1);
+    // A copy keeps the base its original had. Only applyPowers sets these two, and it doesn't run on a card out of the hand.
+    // A card played off the top already has its base, and one in hand may still hold the base from an earlier time off the top.
+    if (!curCardQueueItem.autoplay || c.specialData == 0) {
+        if (c.getId() == CardId::STACK) {
+            item.card.specialData = static_cast<std::int16_t>(cards.discardPile.size() + 1);
+        } else if (c.getId() == CardId::MIND_BLAST) {
+            item.card.specialData = static_cast<std::int16_t>(cards.drawPile.size() + 1);
+        }
     }
     item.purgeOnUse = true;
     item.target = target;
