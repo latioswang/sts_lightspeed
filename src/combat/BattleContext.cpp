@@ -1326,11 +1326,12 @@ void BattleContext::useAttackCard() {
             break;
 
         case CardId::WHIRLWIND: {
+            // useCard makes an X cost card in autoplay free to play once, a copy from Necronomicon or Double Tap included.
             if (!item.ignoreEnergyTotal && player.energy < item.energyOnUse) {
                 item.energyOnUse = player.energy;
             }
             const auto baseDamage = (up ? 8 : 5) + player.getStatus<PS::VIGOR>();
-            addToBot( Actions::WhirlwindAction(baseDamage, item.energyOnUse, !(item.freeToPlay || c.freeToPlayOnce)));
+            addToBot( Actions::WhirlwindAction(baseDamage, item.energyOnUse, !(item.autoplay || item.freeToPlay || c.freeToPlayOnce)));
             break;
         }
 
@@ -2026,7 +2027,7 @@ void BattleContext::useSkillCard() {
                 item.energyOnUse = player.energy;
             }
 
-            addToBot( Actions::TransmutationAction(up, item.energyOnUse, !(item.freeToPlay || c.freeToPlayOnce)) );
+            addToBot( Actions::TransmutationAction(up, item.energyOnUse, !(item.autoplay || item.freeToPlay || c.freeToPlayOnce)) );
             break;
 
         case CardId::TRIP: // maybe fixed --- todo this doesn't work properly because it only requires a target when not upgraded, also the trip card doesn't uses its own implementation of debuff all enemy
