@@ -181,7 +181,11 @@ void CardManager::moveToHand(const CardInstance &c) {
 
 void CardManager::moveToExhaustPile(const CardInstance &c) {
     notifyRemoveFromCombat(c);
-    exhaustPile.push_back(c);
+    // ExhaustCardEffect.update calls resetAttributes on the card a moment later, so a cost for the turn (Mummified
+    // Hand, Bullet Time) is gone by the time Exhume can bring it back. A cost changed for the combat stays.
+    CardInstance exhausted = c;
+    exhausted.setCostForTurn(exhausted.cost);
+    exhaustPile.push_back(exhausted);
 }
 
 
