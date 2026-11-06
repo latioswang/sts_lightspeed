@@ -37,6 +37,9 @@ void BattleContext::init(const GameContext &gc, MonsterEncounter encounterToInit
         shuffleRng = gc.shuffleRng;
         cardRandomRng = gc.cardRandomRng;
         shuffleRng.randomLong(); // Colosseum.reopen calls preBattlePrep, which shuffles a deck nothing uses
+        if (gc.hasRelic(RelicId::ENCHIRIDION)) {  // and runs atPreBattle, whose card the second fight's start clears
+            getTrulyRandomCardInCombat(cardRandomRng, gc.cc, CardType::POWER);
+        }
     }
     miscRng = gc.miscRng;
     potionRng = gc.potionRng;
