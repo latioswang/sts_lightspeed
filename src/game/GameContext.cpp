@@ -2857,7 +2857,8 @@ void GameContext::chooseEventOption(int idx) {
                     break;
 
                 case 2:
-                    obtainRelic(RelicId::MUTAGENIC_STRENGTH);
+                    // DrugDealer.buttonEffect gives Circlet if the relic is already held
+                    obtainRelic(hasRelic(RelicId::MUTAGENIC_STRENGTH) ? RelicId::CIRCLET : RelicId::MUTAGENIC_STRENGTH);
                     regainControl();
                     break;
 
@@ -3224,7 +3225,8 @@ void GameContext::chooseEventOption(int idx) {
                 regainControlAction = [=](GameContext &gc) {
                     Rewards reward;
                     reward.addGold(gc.goldWithIdol(goldAmt));
-                    reward.addRelic(RelicId::ODD_MUSHROOM);
+                    // Mushrooms.buttonEffect gives Circlet if the relic is already held
+                    reward.addRelic(gc.hasRelic(RelicId::ODD_MUSHROOM) ? RelicId::CIRCLET : RelicId::ODD_MUSHROOM);
                     gc.addPotionRewards(reward);
                     reward.addCardReward(gc.createCardReward(Room::EVENT));
                     gc.openCombatRewardScreen(reward);
@@ -3827,7 +3829,8 @@ void GameContext::chooseSelectCardScreenOption(int idx) {
             const SelectScreenCard &c = info.haveSelectedCards[0];
             switch (c.card.getRarity()) {
                 case CardRarity::CURSE:
-                    obtainRelic(RelicId::SPIRIT_POOP);
+                    // Bonfire.setReward gives Circlet if the relic is already held
+                    obtainRelic(hasRelic(RelicId::SPIRIT_POOP) ? RelicId::CIRCLET : RelicId::SPIRIT_POOP);
                     break;
 
                 case CardRarity::BASIC:
