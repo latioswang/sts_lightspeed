@@ -24,6 +24,7 @@
 #include <constants/CharacterClasses.h>
 #include <constants/Relics.h>
 #include <constants/PlayerStatusEffects.h>
+#include "combat/PlayerStatusMap.h"
 
 // powers that use justApplied:
 // Vulnerable, requires isSourceMonster and actionManager turn has ended
@@ -79,7 +80,7 @@ namespace sts {
         std::uint32_t justAppliedBits = 0;
         std::uint64_t statusBits0 = 0;
         std::uint64_t statusBits1 = 0;
-        std::map<PlayerStatus, std::int16_t> statusMap;
+        PlayerStatusMap statusMap;  // a flat std::map<PlayerStatus, std::int16_t>
 
         // The game's powers list: sorted by priority, and in the order gained within a priority. Powers trigger in this order.
         static constexpr int kMaxOrderedPowers = 48;

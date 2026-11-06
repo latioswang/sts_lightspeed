@@ -11,6 +11,7 @@
 #include "sts_common.h"
 
 #include "combat/CardInstance.h"
+#include "combat/CardPile.h"
 #include "game/Random.h"
 #include "game/Deck.h"
 
@@ -39,9 +40,10 @@ namespace sts {
         fixed_list<CardInstance, MAX_GROUP_SIZE> discardPile;
         fixed_list<CardInstance, MAX_GROUP_SIZE> exhaustPile;
 #else
-        std::vector<CardInstance> drawPile;
-        std::vector<CardInstance> discardPile;
-        std::vector<CardInstance> exhaustPile;
+        // std::vector<CardInstance> without the heap for up to CardPile::kInline cards
+        CardPile drawPile;
+        CardPile discardPile;
+        CardPile exhaustPile;
 #endif
         int handNormalityCount = 0;
         int handPainCount = 0;
