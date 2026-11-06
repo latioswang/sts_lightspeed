@@ -1944,14 +1944,19 @@ void GameContext::openTreasureRoomChest() {
         reward.addGold(amount);
     }
 
-    auto relic = returnRandomRelic(info.tier, false);
+    const bool matryoshkaRelic = reward.relicCount > 0;
+    reward.addRelic(returnRandomRelic(info.tier, false));
+    if (!hasKey(Key::SAPPHIRE_KEY)) {
+        reward.sapphireKey = true;  // linked to the chest's relic, the last one
+    }
     if (hasRelic(RelicId::NLOTHS_HUNGRY_FACE) && relics.getRelicValue(RelicId::NLOTHS_HUNGRY_FACE) > 0) {
-        // removeOneRelicFromRewards takes the sapphire key linked to the relic as well
+        // removeOneRelicFromRewards takes the first relic in the list. Matryoshka's comes before the gold and the
+        // chest's relic, so that one goes and the chest's relic keeps its key. Otherwise the chest's relic goes, and the
+        // key linked to it with it.
         --relics.getRelicValueRef(RelicId::NLOTHS_HUNGRY_FACE);
-    } else {
-        reward.addRelic(relic);
-        if (!hasKey(Key::SAPPHIRE_KEY)) {
-            reward.sapphireKey = true;
+        reward.removeRelicReward(0);
+        if (!matryoshkaRelic) {
+            reward.sapphireKey = false;
         }
     }
 
