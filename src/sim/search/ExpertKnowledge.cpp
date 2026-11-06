@@ -4,9 +4,14 @@
 
 #include "sim/search/ExpertKnowledge.h"
 
+#include <array>
+#include <cstdint>
+
 using namespace sts;
 
-int sts::search::Expert::getPlayOrdering(CardId id) {
+namespace {
+
+constexpr int playOrderingOf(CardId id) {
     switch (id) {
         case CardId::NORMALITY:
             return -30;
@@ -198,6 +203,31 @@ int sts::search::Expert::getPlayOrdering(CardId id) {
             return 10000;
     }
 
+}
+
+// The search asks for this for every playable card in every state it looks at, so it's a table built from the switch.
+constexpr int kCardIds = static_cast<int>(CardId::ZAP) + 1;
+
+constexpr std::array<std::int16_t, kCardIds> kPlayOrdering = [] {
+    std::array<std::int16_t, kCardIds> table{};
+    for (int i = 0; i < kCardIds; ++i) {
+        table[i] = static_cast<std::int16_t>(playOrderingOf(static_cast<CardId>(i)));
+    }
+    return table;
+}();
+
+static_assert([] {
+    for (int i = 0; i < kCardIds; ++i) {
+        if (kPlayOrdering[i] != playOrderingOf(static_cast<CardId>(i))) return false;
+    }
+    return true;
+}(), "a play ordering doesn't fit the table");
+
+}  // namespace
+
+int sts::search::Expert::getPlayOrdering(CardId id) {
+    const int i = static_cast<int>(id);
+    return i < kCardIds ? kPlayOrdering[i] : playOrderingOf(id);
 }
 
 int search::Expert::getBossRelicOrdering(RelicId id) {

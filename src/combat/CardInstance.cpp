@@ -298,18 +298,33 @@ bool canUseClash(const BattleContext &bc) {
 }
 
 bool CardInstance::canUseOnAnyTarget(const BattleContext &bc) const {
-    if (requiresTarget()) {
-        return canUse(bc, bc.monsters.getFirstTargetable(), false);
-    } else {
-        return canUse(bc, 0, false);
+    // getFirstTargetable is below monsterCount when it finds one, so canUse's target check comes down to finding one.
+    if (requiresTarget() && bc.monsters.getFirstTargetable() < 0) {
+        return false;
     }
+    return canUseApartFromTarget(bc, false);
 }
 
 bool CardInstance::canUse(const BattleContext &bc, int target, const bool inAutoplay) const {
     // no target: a random pick found nothing, which happens with only a half dead Awakened One left
-    if (this->requiresTarget() && (target < 0 || bc.monsters.areMonstersBasicallyDead() || !bc.monsters.arr[target].isTargetable())) {
-        return false;
+    if (this->requiresTarget()) {
+        if (target < 0) {
+            return false;
+        }
+        // A targetable monster among the first monsterCount means they aren't all basically dead, so that check is
+        // only needed for a target past them.
+        if (target < bc.monsters.monsterCount) {
+            if (!bc.monsters.arr[target].isTargetable()) {
+                return false;
+            }
+        } else if (bc.monsters.areMonstersBasicallyDead() || !bc.monsters.arr[target].isTargetable()) {
+            return false;
+        }
     }
+    return canUseApartFromTarget(bc, inAutoplay);
+}
+
+bool CardInstance::canUseApartFromTarget(const BattleContext &bc, const bool inAutoplay) const {
 
     // this is handled elsewhere now
 //    if (purgeOnUse) {
