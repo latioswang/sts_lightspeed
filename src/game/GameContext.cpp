@@ -2327,9 +2327,13 @@ void GameContext::chooseNeowOption(const Neow::Option &o) {
             gold = 0;
             break;
 
-        case Neow::Drawback::PERCENT_DAMAGE:
-            curHp -= curHp / 10 * 3;
+        case Neow::Drawback::PERCENT_DAMAGE: {  // player.damage with HP_LOSS, so Tungsten Rod takes 1 off
+            const int damage = curHp / 10 * 3;
+            if (damage > 0) {
+                playerLoseHp(damage);
+            }
             break;
+        }
 
         case Neow::Drawback::LOSE_STARTER_RELIC:
             relics.remove(relics.relics.front().id); // NeowReward takes whatever is in slot 0
