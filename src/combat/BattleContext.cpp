@@ -113,16 +113,21 @@ void BattleContext::initRelics(const GameContext &gc) {
     player.relicBits0 = gc.relics.relicBits0;
     player.relicBits1 = gc.relics.relicBits1;
 
+    const auto gainedBefore = [&gc](RelicId first, RelicId second) {
+        for (const auto &r : gc.relics.relics) {
+            if (r.id == second) {
+                return false;
+            }
+            if (r.id == first) {
+                return true;
+            }
+        }
+        return false;
+    };
     // Relics act at the turn's end in the order gained, and Stone Calendar can end the fight before Nilry's Codex gets its turn.
-    for (const auto &r : gc.relics.relics) {
-        if (r.id == R::NILRYS_CODEX) {
-            break;
-        }
-        if (r.id == R::STONE_CALENDAR) {
-            miscBits.set(2);
-            break;
-        }
-    }
+    miscBits.set(2, gainedBefore(R::STONE_CALENDAR, R::NILRYS_CODEX));
+    // So do the turn's post-draw relics, and Warped Tongs picks from the hand before or after Pocketwatch's draw.
+    miscBits.set(3, gainedBefore(R::WARPED_TONGS, R::POCKETWATCH));
 
     fixed_list<RelicId, 4> atBattleStartPreDraw;
     fixed_list<RelicId, 8> atBattleStart;

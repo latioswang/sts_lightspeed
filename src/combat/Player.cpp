@@ -973,14 +973,19 @@ void Player::applyStartOfTurnPowers(BattleContext &bc) {
 }
 
 void Player::applyStartOfTurnPostDrawRelics(BattleContext &bc) {
-    // ****** Player Relics AtTurnStartPostDraw ******
+    // ****** Player Relics AtTurnStartPostDraw, in the order gained ******
+    const bool tongsFirst = bc.miscBits.test(3);
+    if (tongsFirst && hasRelic<R::WARPED_TONGS>()) {
+        bc.addToBot(Actions::UpgradeRandomCardAction());
+    }
+
     if (hasRelic<R::POCKETWATCH>()) {
         if (cardsPlayedThisTurn <= 3) {
             bc.addToBot(Actions::DrawCards(3));
         }
     }
 
-    if (hasRelic<R::WARPED_TONGS>()) {
+    if (!tongsFirst && hasRelic<R::WARPED_TONGS>()) {
         bc.addToBot(Actions::UpgradeRandomCardAction());
     }
 }
