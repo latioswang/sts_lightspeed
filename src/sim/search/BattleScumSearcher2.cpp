@@ -5,6 +5,7 @@
 #include "sim/search/BattleScumSearcher2.h"
 #include "sim/search/ExpertKnowledge.h"
 
+#include <algorithm>
 #include <utility>
 #include <string>
 #include <memory>
@@ -298,16 +299,26 @@ void search::BattleScumSearcher2::enumeratePotionActions(search::BattleScumSearc
     }
 }
 
-template <typename ForwardIt>
-void setupCardOptionsHelper(search::BattleScumSearcher2::Node &node, const ForwardIt begin, const ForwardIt end, const std::function<bool(const CardInstance &)> &p= nullptr) {
+// The search enumerates a card select in every rollout that reaches one, so the edges get their room once (extra for
+// any pushed after these) and the filter is a template parameter rather than a std::function.
+template <typename ForwardIt, typename Pred>
+void setupCardOptionsHelper(search::BattleScumSearcher2::Node &node, const ForwardIt begin, const ForwardIt end, const Pred &p, int extra = 0) {
+    node.edges.reserve(node.edges.size() + static_cast<std::size_t>(std::max<std::ptrdiff_t>(0, end - begin) + extra));
     for (int i = 0; begin+i != end; ++i) {
         const auto &c = begin[i];
-        if (!p || (p(c))) {
+        if (p(c)) {
             node.edges.push_back(
                     {search::Action(search::ActionType::SINGLE_CARD_SELECT, i)}
                 );
         }
     }
+}
+
+constexpr auto anyCard = [](const CardInstance &) { return true; };
+
+template <typename ForwardIt>
+void setupCardOptionsHelper(search::BattleScumSearcher2::Node &node, const ForwardIt begin, const ForwardIt end) {
+    setupCardOptionsHelper(node, begin, end, anyCard);
 }
 
 void search::BattleScumSearcher2::enumerateCardSelectActions(search::BattleScumSearcher2::Node &node,
@@ -320,12 +331,14 @@ void search::BattleScumSearcher2::enumerateCardSelectActions(search::BattleScumS
             break;
 
         case CardSelectTask::CODEX:
+            node.edges.reserve(node.edges.size() + 4);
             for (int i = 0; i < 4; ++i) { // i -> 3 action means skip
                 node.edges.push_back({Action(search::ActionType::SINGLE_CARD_SELECT, i)});
             }
             break;
 
         case CardSelectTask::DISCOVERY:
+            node.edges.reserve(node.edges.size() + 3);
             for (int i = 0; i < 3; ++i) {
                 node.edges.push_back({Action(search::ActionType::SINGLE_CARD_SELECT, i)});
             }
@@ -353,12 +366,13 @@ void search::BattleScumSearcher2::enumerateCardSelectActions(search::BattleScumS
 
         case CardSelectTask::RETAIN: { // picked cards are at the end of the hand, and the screen can close at any point
             const int selected = bc.cardSelectInfo.data0;
-            setupCardOptionsHelper(node, bc.cards.hand.begin(), bc.cards.hand.begin() + bc.cards.cardsInHand - selected);
+            setupCardOptionsHelper(node, bc.cards.hand.begin(), bc.cards.hand.begin() + bc.cards.cardsInHand - selected, anyCard, 1);
             node.edges.push_back({search::Action(search::ActionType::SINGLE_CARD_SELECT, CardSelectInfo::RETAIN_DONE_IDX)});
             break;
         }
 
         case CardSelectTask::SCRY: // offsets from the top of the draw pile, and the screen can close at any point
+            node.edges.reserve(node.edges.size() + std::max(0, bc.cardSelectInfo.pickCount - bc.cardSelectInfo.data0) + 1);
             for (int i = bc.cardSelectInfo.data0; i < bc.cardSelectInfo.pickCount; ++i) {
                 node.edges.push_back({search::Action(search::ActionType::SINGLE_CARD_SELECT, i)});
             }
@@ -375,12 +389,14 @@ void search::BattleScumSearcher2::enumerateCardSelectActions(search::BattleScumS
 
         case CardSelectTask::FOREIGN_INFLUENCE:
         case CardSelectTask::WISH:
+            node.edges.reserve(node.edges.size() + 3);
             for (int i = 0; i < 3; ++i) {
                 node.edges.push_back({search::Action(search::ActionType::SINGLE_CARD_SELECT, i)});
             }
             break;
 
         case CardSelectTask::CHOOSE_STANCE:
+            node.edges.reserve(node.edges.size() + 2);
             node.edges.push_back({search::Action(search::ActionType::SINGLE_CARD_SELECT, 0)});
             node.edges.push_back({search::Action(search::ActionType::SINGLE_CARD_SELECT, 1)});
             break;

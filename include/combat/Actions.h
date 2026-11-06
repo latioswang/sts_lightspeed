@@ -19,6 +19,7 @@
 #include "combat/CardSelectInfo.h"
 
 #include "combat/ActionQueue.h"
+#include "game/Random.h"
 
 namespace sts {
 
@@ -94,7 +95,7 @@ namespace sts {
         static Action MakeTempCardInHand(CardInstance c, int amount = 1);
         static Action MakeTempCardInDrawPile(const CardInstance &c, int amount, bool shuffleInto);
         static Action MakeTempCardInDiscard(const CardInstance &c, int amount = 1);
-        static Action MakeTempCardsInHand(std::vector<CardInstance> cards);
+        static Action MakeRandomColorlessCardsInHand(Random rngAtStart, int count, bool upgraded); // Transmutation
 
         static Action DiscardNoTriggerCard(); // for doubt, shame, etc, discards the BattleContext.curCard
 

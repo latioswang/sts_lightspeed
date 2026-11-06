@@ -7,15 +7,52 @@
 
 #include "sts_common.h"
 
+#include <array>
 #include <bitset>
+#include <cstddef>
 #include <functional>
+#include <new>
+#include <type_traits>
 #include <cassert>
 
 
 namespace sts {
 
     class BattleContext;
-    typedef std::function<void (BattleContext &)> ActionFunction;
+
+    // What std::function<void (BattleContext &)> did for the action queue, without the heap and the type-erased copy:
+    // a function pointer and the lambda's captures in a fixed buffer. Captures must be trivially copyable and fit in
+    // kCaptureBytes; the static asserts below name any lambda that doesn't. Copying one is copying its bytes, so a
+    // BattleContext (whose queue holds 50 of these, live or stale) copies its queue with a memcpy.
+    class ActionFunction {
+    public:
+        static constexpr std::size_t kCaptureBytes = 32;
+        static constexpr std::size_t kCaptureAlign = alignof(void *);
+
+        ActionFunction() = default;
+
+        template <typename F, typename = std::enable_if_t<!std::is_same_v<std::decay_t<F>, ActionFunction>>>
+        ActionFunction(F f) : invoke(&invokeAs<F>) {  // NOLINT: implicit, like std::function
+            static_assert(sizeof(F) <= kCaptureBytes, "action lambda captures too much for ActionFunction");
+            static_assert(alignof(F) <= kCaptureAlign, "action lambda capture is over-aligned");
+            static_assert(std::is_trivially_copyable_v<F>, "action lambda captures something not trivially copyable");
+            static_assert(std::is_trivially_destructible_v<F>, "action lambda captures something with a destructor");
+            ::new (static_cast<void *>(storage)) F(f);
+        }
+
+        void operator()(BattleContext &bc) const { invoke(storage, bc); }
+        explicit operator bool() const { return invoke != nullptr; }
+
+    private:
+        template <typename F>
+        static void invokeAs(const void *captures, BattleContext &bc) {
+            (*std::launder(static_cast<const F *>(captures)))(bc);
+        }
+
+        void (*invoke)(const void *, BattleContext &) = nullptr;
+        alignas(kCaptureAlign) unsigned char storage[kCaptureBytes];
+    };
+    static_assert(std::is_trivially_copyable_v<ActionFunction>);
 
     struct Action {
         ActionFunction actFunc;
