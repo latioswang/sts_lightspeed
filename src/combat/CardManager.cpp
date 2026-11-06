@@ -95,6 +95,7 @@ void CardManager::createTempCardInDrawPile(int idx, CardInstance c) {
     c.uniqueId = static_cast<std::int16_t>(nextUniqueCardId++);
     notifyAddCardToCombat(c);
     notifyAddToDrawPile(c);
+    ++drawPileAddedUnseen;
     drawPile.insert(drawPile.begin()+idx, c);
 }
 
@@ -458,6 +459,7 @@ void CardManager::draw(BattleContext &bc, int amount) {
 }
 
 void CardManager::onCardDrawOrDiscard(const BattleContext &bc) {
+    drawPileAddedUnseen = 0;  // it runs hand.applyPowers
     // AbstractPlayer.onCardDrawOrDiscard: skills in hand with another cost, from another turn or Snecko Oil, go back to 0.
     if (bc.player.hasStatus<PS::CORRUPTION>()) {
         for (int i = 0; i < cardsInHand; ++i) {

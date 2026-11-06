@@ -1227,7 +1227,7 @@ void BattleContext::useAttackCard() {
         case CardId::MIND_BLAST: {
             // PlayTopCardAction runs applyPowers as it takes the card, while the cards after it are still in the pile
             const bool offTheTop = curCardQueueItem.autoplay && c.specialData > 0;
-            const auto baseDamage = offTheTop ? c.specialData - 1 : static_cast<int>(cards.drawPile.size());
+            const auto baseDamage = offTheTop ? c.specialData - 1 : std::max(0, static_cast<int>(cards.drawPile.size()) - cards.drawPileAddedUnseen);
             const auto damage = calculateCardDamage(c, t, baseDamage);
             addToBot( Actions::AttackEnemy(t, damage) );
             break;
@@ -3280,6 +3280,7 @@ void BattleContext::onUseStatusOrCurseCard() {
 }
 
 void BattleContext::onAfterUseCard() {
+    cards.drawPileAddedUnseen = 0;  // UseCardAction runs hand.applyPowers
     auto &item = curCardQueueItem;
     auto &c = item.card;
     bool rebound = false;
@@ -4219,7 +4220,7 @@ void BattleContext::queuePurgeCard(const CardInstance &c, int target) {
         if (c.getId() == CardId::STACK) {
             item.card.specialData = static_cast<std::int16_t>(cards.discardPile.size() + 1);
         } else if (c.getId() == CardId::MIND_BLAST) {
-            item.card.specialData = static_cast<std::int16_t>(cards.drawPile.size() + 1);
+            item.card.specialData = static_cast<std::int16_t>(std::max(0, static_cast<int>(cards.drawPile.size()) - cards.drawPileAddedUnseen) + 1);
         }
     }
     item.purgeOnUse = true;

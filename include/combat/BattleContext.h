@@ -253,6 +253,7 @@ namespace sts {
     template <PlayerStatus s>
     Action Actions::BuffPlayer(int amount) {
         return {[=] (BattleContext &bc) {
+            bc.cards.drawPileAddedUnseen = 0;  // AbstractDungeon.onModifyPower runs hand.applyPowers
             if (s == PlayerStatus::CORRUPTION && !bc.player.hasStatus<PS::CORRUPTION>()) {
                 bc.cards.onBuffCorruption();
             }
@@ -263,6 +264,7 @@ namespace sts {
     template <PlayerStatus s>
     Action Actions::DebuffPlayer(int amount, bool isSourceMonster) {
         return {[=] (BattleContext &bc) {
+            bc.cards.drawPileAddedUnseen = 0;  // AbstractDungeon.onModifyPower runs hand.applyPowers
             bc.player.debuff<s>(amount, isSourceMonster);
         }};
     }
@@ -270,6 +272,7 @@ namespace sts {
     template<PlayerStatus s>
     Action Actions::DecrementStatus(int amount) {
         return {[=] (BattleContext &bc) {
+            bc.cards.drawPileAddedUnseen = 0;  // AbstractDungeon.onModifyPower runs hand.applyPowers
             bc.player.decrementStatus<s>(amount);
         }};
     }
@@ -277,6 +280,7 @@ namespace sts {
     template <PlayerStatus s>
     Action Actions::RemoveStatus() {
         return {[=] (BattleContext &bc) {
+            bc.cards.drawPileAddedUnseen = 0;  // AbstractDungeon.onModifyPower runs hand.applyPowers
             bc.player.setHasStatus<s>(false);
         }};
     }
@@ -318,6 +322,7 @@ namespace sts {
     template<MonsterStatus s>
     Action Actions::BuffEnemy(int idx, int amount) {
         return {[=] (BattleContext &bc) {
+            bc.cards.drawPileAddedUnseen = 0;  // AbstractDungeon.onModifyPower runs hand.applyPowers
             // ApplyPowerAction does nothing to a dead, half-dead or escaped target.
             if (!bc.monsters.arr[idx].isDeadOrEscaped()) {
                 bc.monsters.arr[idx].buff<s>(amount);
@@ -328,6 +333,7 @@ namespace sts {
     template <MonsterStatus s>
     Action Actions::DebuffEnemy(int idx, int amount, bool isSourceMonster) {
         return {[=] (BattleContext &bc) {
+            bc.cards.drawPileAddedUnseen = 0;  // AbstractDungeon.onModifyPower runs hand.applyPowers
             bc.debuffEnemy<s>(idx, amount, isSourceMonster);
         }};
     }
@@ -338,6 +344,7 @@ namespace sts {
         // ^^ never mind i think adding to top is a workaround here
 
         return {[=] (BattleContext &bc) {
+            bc.cards.drawPileAddedUnseen = 0;  // AbstractDungeon.onModifyPower runs hand.applyPowers
             for (int i = bc.monsters.monsterCount-1; i >= 0; --i) {
                 if (bc.monsters.arr[i].isTargetable()) {
                     bc.addToTop(Actions::DebuffEnemy<s>(i, amount, isSourceMonster));
