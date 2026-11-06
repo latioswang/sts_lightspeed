@@ -69,3 +69,21 @@ if(EXISTS "${STS_RESEARCH_DIR}/realgame/bridge_main.cpp")
   target_include_directories(sts_bridge PUBLIC include ${STS_RESEARCH_DIR}/realgame ${STS_RESEARCH_DIR}/cpp ${STS_RESEARCH_DIR}/vf)
   target_link_libraries(sts_bridge stscore pthread)
 endif()
+
+# Link-time optimisation for the simulator library and the research programs, in Release builds only. CMake picks the
+# flags for the compiler (-flto=thin for Clang, -flto=auto for GCC, with gcc-ar for the static library). It changes no
+# result: no -march, no fast-math, no FMA contraction beyond the compiler's default. -DSTS_LTO=OFF turns it off.
+option(STS_LTO "link-time optimisation for stscore, fair_eval and sts_bridge in Release builds" ON)
+if(STS_LTO)
+  include(CheckIPOSupported)
+  check_ipo_supported(RESULT STS_LTO_SUPPORTED OUTPUT STS_LTO_ERROR LANGUAGES CXX)
+  if(STS_LTO_SUPPORTED)
+    foreach(t stscore fair_eval sts_bridge)
+      if(TARGET ${t})
+        set_property(TARGET ${t} PROPERTY INTERPROCEDURAL_OPTIMIZATION_RELEASE TRUE)
+      endif()
+    endforeach()
+  else()
+    message(WARNING "link-time optimisation not supported here, building without it: ${STS_LTO_ERROR}")
+  endif()
+endif()
