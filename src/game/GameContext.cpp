@@ -1799,8 +1799,11 @@ void GameContext::addPotionRewards(Rewards &r) {
         chance = 100;
     }
 
-    int rewardsSize = r.potionCount + r.relicCount + r.goldRewardCount + r.cardRewardCount;
-    if (rewardsSize >= 4) {
+    // AbstractRoom.addPotionToRewards counts every item already in the room's list, keys included. BaseMod's
+    // FixUnnecessaryRewardCulling has that count read -1.
+    int rewardsSize = r.potionCount + r.relicCount + r.goldRewardCount + r.cardRewardCount +
+                      (r.emeraldKey ? 1 : 0) + (r.sapphireKey ? 1 : 0);
+    if (!baseModFixes && rewardsSize >= 4) {
         chance = 0;
     }
 
@@ -1986,10 +1989,15 @@ Rewards GameContext::createEliteCombatReward() {
     if (hasRelic(RelicId::BLACK_STAR)) {
         reward.addRelic(returnNonCampfireRelic(returnRandomRelicTierElite(relicRng)));
     }
-    reward.emeraldKey = map->burningEliteX == curMapNodeX && map->burningEliteY == curMapNodeY;
+    reward.emeraldKey = atBurningElite();
     addPotionRewards(reward);
     reward.addCardReward(createCardReward(Room::ELITE));
     return reward;
+}
+
+bool GameContext::atBurningElite() const {
+    // MonsterRoomElite.addEmeraldKey: only while the key is still missing.
+    return !hasKey(Key::EMERALD_KEY) && map->burningEliteX == curMapNodeX && map->burningEliteY == curMapNodeY;
 }
 
 Rewards GameContext::createBossCombatReward() {
@@ -2255,17 +2263,19 @@ void GameContext::drinkPotion(Potion p) {
 }
 
 void GameContext::afterEscape() {
-    // Smoke Bomb: the end of the fight still rolls gold and a potion, but the reward screen opens without them.
-    if (curRoom == Room::MONSTER) {
-        treasureRng.random(10, 20);
-    } else if (curRoom == Room::ELITE) {
-        treasureRng.random(25, 35);
-        returnRandomRelic(returnRandomRelicTierElite(relicRng));
-        if (hasRelic(RelicId::BLACK_STAR)) {
-            returnNonCampfireRelic(returnRandomRelicTierElite(relicRng));
-        }
-    }
+    // Smoke Bomb: the end of the fight still rolls gold, relics and a potion, but the reward screen opens without them.
+    // The potion's chance still counts what the room holds by then, the Emerald Key included.
     Rewards discarded;
+    if (curRoom == Room::MONSTER) {
+        discarded.addGold(treasureRng.random(10, 20));
+    } else if (curRoom == Room::ELITE) {
+        discarded.addGold(treasureRng.random(25, 35));
+        discarded.addRelic(returnRandomRelic(returnRandomRelicTierElite(relicRng)));
+        if (hasRelic(RelicId::BLACK_STAR)) {
+            discarded.addRelic(returnNonCampfireRelic(returnRandomRelicTierElite(relicRng)));
+        }
+        discarded.emeraldKey = atBurningElite();
+    }
     addPotionRewards(discarded);
     if (curRoom == Room::EVENT && curEvent == Event::COLOSSEUM) {
         if (info.eventData == 0) {
