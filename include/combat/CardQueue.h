@@ -13,19 +13,20 @@
 namespace sts {
 
     struct CardQueueItem {
+        // The ints come first and the flags after them, so an item is 32 bytes and fits in an ActionFunction's captures.
         CardInstance card; // todo taking a copy is is incorrect because the card needs to be read from hand I believe in some scenarios, not sure
 //        int cardIdx;
         int target = 0;
+        int energyOnUse = 0;
+        int regretCardCount = 0; // maybe use to indicate triggerOnUse too?
 
         // special data
         bool isEndTurn = false;
         bool triggerOnUse = true;
         bool ignoreEnergyTotal = false;
-        int energyOnUse = 0;
         bool freeToPlay = false;
         bool randomTarget = false;
         bool autoplay = false;
-        int regretCardCount = 0; // maybe use to indicate triggerOnUse too?
 
         bool purgeOnUse = false;
         bool exhaustOnUse = false;

@@ -295,9 +295,14 @@ Action Actions::MakeTempCardInDiscard(const CardInstance &c, int amount) {
     }};
 }
 
-Action Actions::MakeTempCardsInHand(std::vector<CardInstance> cards) {
+Action Actions::MakeRandomColorlessCardsInHand(Random rngAtStart, int count, bool upgraded) {
+    // The cards are drawn again from a copy of the RNG as it was when they were picked, which gives the same cards
+    // without carrying a list of them in the action.
     return {[=](BattleContext &bc) {
-        for (auto c : cards) {
+        Random rng = rngAtStart;
+        for (int i = 0; i < count; ++i) {
+            CardInstance c(sts::getTrulyRandomColorlessCardInCombat(rng), upgraded);
+            c.setCostForTurn(0);
             bc.upgradeIfMasterReality(c);
             c.uniqueId = bc.cards.nextUniqueCardId++;
             bc.cards.notifyAddCardToCombat(c);
@@ -1405,14 +1410,12 @@ Action Actions::TransmutationAction(bool upgraded, int energy, bool useEnergy) {
             return;
         }
 
-        std::vector<CardInstance> cards;
+        // The cards are picked now; the action that adds them picks the same ones again from this copy of the RNG.
+        const Random rngAtStart = bc.cardRandomRng;
        for (int i = 0; i < effectAmount; ++i) {
-           const auto cid = sts::getTrulyRandomColorlessCardInCombat(bc.cardRandomRng);
-           CardInstance c(cid, upgraded);
-           c.setCostForTurn(0);
-           cards.push_back(c);
+           sts::getTrulyRandomColorlessCardInCombat(bc.cardRandomRng);
        }
-       bc.addToBot( Actions::MakeTempCardsInHand(cards) );
+       bc.addToBot( Actions::MakeRandomColorlessCardsInHand(rngAtStart, effectAmount, upgraded) );
 
        if (useEnergy) {
            bc.player.useEnergy(bc.player.energy);
