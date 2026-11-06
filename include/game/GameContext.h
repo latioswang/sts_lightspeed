@@ -83,6 +83,7 @@ namespace sts {
 
         // CardSelectScreen
         RngReference transformRng = CARD_RNG;
+        CardId neowCurse = CardId::INVALID; // rolled when chosen, joins the deck once the cards are picked
         CardSelectScreenType selectScreenType = CardSelectScreenType::INVALID;
         int toSelectCount = 0;
         fixed_list<SelectScreenCard, Deck::MAX_SIZE> toSelectCards;
@@ -210,6 +211,9 @@ namespace sts {
         int cardRarityFactor = 5;
         int shopRemoveCount = 0;
         bool speedrunPace = false; // todo load from save
+        // BaseMod with its basemod-fixes setting on. Of what that changes, only the cap on a potion reward is followed
+        // here: the fixes take it off. Off is the unmodded game.
+        bool baseModFixes = false;
 
         int curMapNodeX = -1;
         int curMapNodeY = -1;
@@ -315,6 +319,7 @@ namespace sts {
         Rewards createCombatReward();
         Rewards createEliteCombatReward();
         Rewards createBossCombatReward();
+        [[nodiscard]] bool atBurningElite() const;  // the elite whose rewards hold the Emerald Key
 
         Event getShrine(Random &eventRngCopy);
         Event getEvent(Random &eventRngCopy);

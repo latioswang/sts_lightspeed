@@ -37,6 +37,9 @@ void BattleContext::init(const GameContext &gc, MonsterEncounter encounterToInit
         shuffleRng = gc.shuffleRng;
         cardRandomRng = gc.cardRandomRng;
         shuffleRng.randomLong(); // Colosseum.reopen calls preBattlePrep, which shuffles a deck nothing uses
+        if (gc.hasRelic(RelicId::ENCHIRIDION)) {  // and runs atPreBattle, whose card the second fight's start clears
+            getTrulyRandomCardInCombat(cardRandomRng, gc.cc, CardType::POWER);
+        }
     }
     miscRng = gc.miscRng;
     potionRng = gc.potionRng;
@@ -94,9 +97,12 @@ void BattleContext::init(const GameContext &gc, MonsterEncounter encounterToInit
 
     player.orbSlots = gc.masterMaxOrbs; // AbstractPlayer.preBattlePrep
 
-    cards.init(gc, *this);
+    const int innateBeyondDraw = cards.init(gc, *this);
 
     initRelics(gc);
+    if (innateBeyondDraw > 0) { // CardGroup.initializeDeck uses addToTurnStart, which waits for the queue to empty
+        addToBot( Actions::DrawCards(innateBeyondDraw) );
+    }
     player.energy += player.energyPerTurn;
 
     executeActions();
@@ -106,6 +112,22 @@ void BattleContext::init(const GameContext &gc, MonsterEncounter encounterToInit
 void BattleContext::initRelics(const GameContext &gc) {
     player.relicBits0 = gc.relics.relicBits0;
     player.relicBits1 = gc.relics.relicBits1;
+
+    const auto gainedBefore = [&gc](RelicId first, RelicId second) {
+        for (const auto &r : gc.relics.relics) {
+            if (r.id == second) {
+                return false;
+            }
+            if (r.id == first) {
+                return true;
+            }
+        }
+        return false;
+    };
+    // Relics act at the turn's end in the order gained, and Stone Calendar can end the fight before Nilry's Codex gets its turn.
+    miscBits.set(2, gainedBefore(R::STONE_CALENDAR, R::NILRYS_CODEX));
+    // So do the turn's post-draw relics, and Warped Tongs picks from the hand before or after Pocketwatch's draw.
+    miscBits.set(3, gainedBefore(R::WARPED_TONGS, R::POCKETWATCH));
 
     fixed_list<RelicId, 4> atBattleStartPreDraw;
     fixed_list<RelicId, 8> atBattleStart;
@@ -646,6 +668,14 @@ void BattleContext::updateRelicsOnExit(GameContext &g) const {
             case RelicId::BLACK_BLOOD:
                 if (outcome == Outcome::PLAYER_VICTORY) {
                     g.playerHeal(victoryHeal(12));
+                }
+                break;
+
+            case RelicId::FACE_OF_CLERIC:
+                // AbstractPlayer.onVictory runs for a Smoke Bomb escape too.
+                if (outcome == Outcome::PLAYER_VICTORY) {
+                    g.maxHp += 1;
+                    g.playerHeal(victoryHeal(1));
                 }
                 break;
 
@@ -1197,7 +1227,7 @@ void BattleContext::useAttackCard() {
         case CardId::MIND_BLAST: {
             // PlayTopCardAction runs applyPowers as it takes the card, while the cards after it are still in the pile
             const bool offTheTop = curCardQueueItem.autoplay && c.specialData > 0;
-            const auto baseDamage = offTheTop ? c.specialData - 1 : static_cast<int>(cards.drawPile.size());
+            const auto baseDamage = offTheTop ? c.specialData - 1 : std::max(0, static_cast<int>(cards.drawPile.size()) - cards.drawPileAddedUnseen);
             const auto damage = calculateCardDamage(c, t, baseDamage);
             addToBot( Actions::AttackEnemy(t, damage) );
             break;
@@ -1296,11 +1326,12 @@ void BattleContext::useAttackCard() {
             break;
 
         case CardId::WHIRLWIND: {
+            // useCard makes an X cost card in autoplay free to play once, a copy from Necronomicon or Double Tap included.
             if (!item.ignoreEnergyTotal && player.energy < item.energyOnUse) {
                 item.energyOnUse = player.energy;
             }
             const auto baseDamage = (up ? 8 : 5) + player.getStatus<PS::VIGOR>();
-            addToBot( Actions::WhirlwindAction(baseDamage, item.energyOnUse, !(item.freeToPlay || c.freeToPlayOnce)));
+            addToBot( Actions::WhirlwindAction(baseDamage, item.energyOnUse, !(item.autoplay || item.freeToPlay || c.freeToPlayOnce)));
             break;
         }
 
@@ -1996,7 +2027,7 @@ void BattleContext::useSkillCard() {
                 item.energyOnUse = player.energy;
             }
 
-            addToBot( Actions::TransmutationAction(up, item.energyOnUse, !(item.freeToPlay || c.freeToPlayOnce)) );
+            addToBot( Actions::TransmutationAction(up, item.energyOnUse, !(item.autoplay || item.freeToPlay || c.freeToPlayOnce)) );
             break;
 
         case CardId::TRIP: // maybe fixed --- todo this doesn't work properly because it only requires a target when not upgraded, also the trip card doesn't uses its own implementation of debuff all enemy
@@ -2632,9 +2663,6 @@ void BattleContext::usePowerCard() {
             break;
 
         case CardId::COMBUST:
-            if (player.hasStatus<PS::NO_DRAW>() && !player.hasStatus<PS::COMBUST>()) {
-                player.noDrawBeforeCombust = true;
-            }
             addToBot( Actions::BuffPlayer<PS::COMBUST>(up ? 7 : 5) );
             break;
 
@@ -3113,6 +3141,17 @@ void BattleContext::onUsePowerCard() {
         }
     }
 
+    // Storm and Hex queue their actions in the order the powers came, and both can roll cardRandomRng.
+    const auto storm = [this, &p]() {
+        if (p.hasStatus<PS::STORM>()) {
+            addToBot( Actions::ChannelOrbs(Orb::LIGHTNING, p.getStatus<PS::STORM>()) );
+        }
+    };
+    const bool stormBeforeHex = p.hasStatus<PS::HEX>() && p.actsBefore(PS::STORM, PS::HEX);
+    if (stormBeforeHex) {
+        storm();
+    }
+
     if (p.hasStatus<PS::HEX>()) {
         addToBot( Actions::MakeTempCardInDrawPile(CardInstance(CardId::DAZED), 1, true) );
     }
@@ -3131,8 +3170,8 @@ void BattleContext::onUsePowerCard() {
         addToTop( Actions::DrawCards(p.getStatus<PS::HEATSINK>()) );
     }
 
-    if (p.hasStatus<PS::STORM>()) {
-        addToBot( Actions::ChannelOrbs(Orb::LIGHTNING, p.getStatus<PS::STORM>()) );
+    if (!stormBeforeHex) {
+        storm();
     }
 
     // Force Field's triggerOnCardPlayed, and its constructor counts cardsPlayedThisCombat for the deck's next copy.
@@ -3242,6 +3281,7 @@ void BattleContext::onUseStatusOrCurseCard() {
 }
 
 void BattleContext::onAfterUseCard() {
+    cards.drawPileAddedUnseen = 0;  // UseCardAction runs hand.applyPowers
     auto &item = curCardQueueItem;
     auto &c = item.card;
     bool rebound = false;
@@ -3350,6 +3390,16 @@ void BattleContext::callEndOfTurnActions() {
         }
     }
 
+    const auto stoneCalendar = [this]() {
+        if (player.hasRelic<R::STONE_CALENDAR>() && turn == 6) {
+            addToBot(Actions::DamageAllEnemy(52));
+        }
+    };
+    const bool calendarBeforeCodex = miscBits.test(2);
+    if (calendarBeforeCodex) {
+        stoneCalendar();
+    }
+
     if (player.hasRelic<R::NILRYS_CODEX>()) {
         addToBot(Actions::CodexAction());
     }
@@ -3360,10 +3410,8 @@ void BattleContext::callEndOfTurnActions() {
         }
     }
 
-    if (player.hasRelic<R::STONE_CALENDAR>()) {
-        if (turn == 6) {
-            addToBot(Actions::DamageAllEnemy(52));
-        }
+    if (!calendarBeforeCodex) {
+        stoneCalendar();
     }
 
     // ********************* Player Powers AtEndOfTurnPreEndTurnCards *********************
@@ -3487,7 +3535,21 @@ void BattleContext::afterMonsterTurns() {
     player.applyStartOfTurnRelics(*this);
 
     // player applyStartOfTurnPreDrawCards() // no cards implement this
-    // player.applyStartOfTurnCards() // only Eviscerate implements this
+    // player.applyStartOfTurnCards(): only Eviscerate implements it, and it puts the card's cost back wherever it is.
+    const auto resetEviscerate = [](CardInstance &c) {
+        if (c.getId() == CardId::EVISCERATE) {
+            c.setCostForTurn(c.cost);
+        }
+    };
+    for (auto &c : cards.drawPile) {
+        resetEviscerate(c);
+    }
+    for (int i = 0; i < cards.cardsInHand; ++i) {
+        resetEviscerate(cards.hand[i]);
+    }
+    for (auto &c : cards.discardPile) {
+        resetEviscerate(c);
+    }
 
     player.applyStartOfTurnPowers(*(this));
 
@@ -3880,9 +3942,13 @@ void BattleContext::playTopCardInDrawPile(int monsterTargetIdx, bool exhausts) {
 
 // Blood for Blood's and Eviscerate's makeCopy set the new card's cost from the fight so far.
 void BattleContext::applyMakeCopy(CardInstance &c) const {
-    c.tookDamageTimes(player.timesDamagedThisCombat);
+    if (c.getId() == CardId::BLOOD_FOR_BLOOD) {  // Masterful Stab's makeCopy is a plain new card
+        c.tookDamageTimes(player.timesDamagedThisCombat);
+    }
     if (c.getId() == CardId::EVISCERATE) {
         c.setCostForTurn(c.cost - player.cardsDiscardedThisTurn);
+    } else if (c.getId() == CardId::FORCE_FIELD) {
+        c.updateCost(-player.powersPlayedThisCombat);  // its constructor counts cardsPlayedThisCombat
     }
 }
 
@@ -3894,6 +3960,21 @@ void BattleContext::moveToHandHelper(CardInstance c) {
         cards.moveToHand(c);
     } else {
         cards.moveToDiscardPile(c);
+    }
+}
+
+// It runs onCardDrawOrDiscard before Corruption sets the new card's cost for the turn, so a new skill is free for the
+// rest of the fight, as is any other skill in hand with a cost.
+void BattleContext::addNewCardToHand(CardInstance c) {
+    if (cards.cardsInHand >= CardManager::MAX_HAND_SIZE) {
+        cards.moveToDiscardPile(c);
+        return;
+    }
+    cards.moveToHand(c);
+    cards.onCardDrawOrDiscard(*this);
+    auto &added = cards.hand[cards.cardsInHand - 1];
+    if (player.hasStatus<PS::CORRUPTION>() && added.getType() == CardType::SKILL) {
+        added.setCostForTurn(-9);
     }
 }
 
@@ -4134,8 +4215,14 @@ int BattleContext::calculateCardBlock(int baseBlock) const {
 void BattleContext::queuePurgeCard(const CardInstance &c, int target) {
     CardQueueItem item;
     item.card = c;
-    if (c.getId() == CardId::STACK && c.specialData == 0) {
-        item.card.specialData = static_cast<std::int16_t>(cards.discardPile.size() + 1);
+    // A copy keeps the base its original had. Only applyPowers sets these two, and it doesn't run on a card out of the hand.
+    // A card played off the top already has its base, and one in hand may still hold the base from an earlier time off the top.
+    if (!curCardQueueItem.autoplay || c.specialData == 0) {
+        if (c.getId() == CardId::STACK) {
+            item.card.specialData = static_cast<std::int16_t>(cards.discardPile.size() + 1);
+        } else if (c.getId() == CardId::MIND_BLAST) {
+            item.card.specialData = static_cast<std::int16_t>(std::max(0, static_cast<int>(cards.drawPile.size()) - cards.drawPileAddedUnseen) + 1);
+        }
     }
     item.purgeOnUse = true;
     item.target = target;
@@ -4146,14 +4233,8 @@ void BattleContext::queuePurgeCard(const CardInstance &c, int target) {
 }
 
 void BattleContext::addPurgeCardToCardQueue(const CardQueueItem &item) {
-    if (cardQueue.size > 0) {
-        auto temp = cardQueue.front();
-        cardQueue.front() = item;
-        cardQueue.pushFront(temp);
-    } else {
-        cardQueue.pushFront(item);
-    }
-
+    // The game adds it at index 1 with the card being played still at index 0. Here that card has already left the queue.
+    cardQueue.pushFront(item);
 }
 
 void BattleContext::noOpRollMove() {
@@ -4250,13 +4331,14 @@ void BattleContext::triggerAndMoveToExhaustPile(CardInstance c) {
         addToTop(Actions::DamageAllEnemy(3));
     }
 
-    if (player.hasRelic<R::DEAD_BRANCH>()){
+    // Dead Branch and Dark Embrace check areMonstersBasicallyDead themselves
+    if (player.hasRelic<R::DEAD_BRANCH>() && !monsters.areMonstersBasicallyDead()){
         CardInstance c(getTrulyRandomCardInCombat(cardRandomRng, player.cc));
         applyMakeCopy(c);
         addToBot(Actions::MakeTempCardInHand(c));
     }
 
-    if (player.hasStatus<PS::DARK_EMBRACE>()) {
+    if (player.hasStatus<PS::DARK_EMBRACE>() && !monsters.areMonstersBasicallyDead()) {
         addToBot(Actions::DrawCards(player.getStatus<PS::DARK_EMBRACE>()));
     }
 
@@ -4466,6 +4548,9 @@ void BattleContext::chooseDualWieldCard(int handIdx) {
 }
 
 void BattleContext::chooseDiscardToHandCard(int discardIdx, bool forZeroCost) {
+    if (cards.cardsInHand >= 10) {
+        return; // BetterDiscardPileToHandAction leaves it where it is in the pile, and the pile's order decides the next shuffle
+    }
     CardInstance c = cards.discardPile[discardIdx];
     cards.removeFromDiscard(discardIdx);
     if (forZeroCost) {
@@ -4485,10 +4570,12 @@ void BattleContext::chooseDiscoveryCard(CardId id) {
 
     for (int i = 0; i < discoveryAmount; ++i) {
         if (cards.cardsInHand + 1 <= CardManager::MAX_HAND_SIZE) {
-            if (player.hasStatus<PS::CORRUPTION>() && c.getType() == CardType::SKILL) {
-                c.setCostForTurn(-9);
-            }
             cards.createTempCardInHand(c);
+            cards.onCardDrawOrDiscard(*this);  // ShowCardAndAddToHandEffect, as in addNewCardToHand
+            auto &added = cards.hand[cards.cardsInHand - 1];
+            if (player.hasStatus<PS::CORRUPTION>() && added.getType() == CardType::SKILL) {
+                added.setCostForTurn(-9);
+            }
 
         } else {
             cards.createTempCardInDiscard(c);

@@ -28,6 +28,7 @@ int powerPriority(PlayerStatus s) {
         case PS::ESTABLISHMENT:
         case PS::TOOLS_OF_THE_TRADE: return 25;
         case PS::INTANGIBLE: return 75;
+        case PS::CONSTRICTED: return 105;
         case PS::WEAK: return 99;
         default: return kDefaultPriority;
     }
@@ -68,6 +69,16 @@ void Player::notePowerGained(PlayerStatus s) {
     }
     powerOrder[at] = s;
     ++powerOrderCount;
+}
+
+bool Player::actsBefore(PlayerStatus a, PlayerStatus b) const {
+    const auto ordered = powerOrder.begin() + powerOrderCount;
+    const auto ia = std::find(powerOrder.begin(), ordered, a);
+    const auto ib = std::find(powerOrder.begin(), ordered, b);
+    if (ia != ordered || ib != ordered) {
+        return ia < ib;
+    }
+    return a < b;  // statusMap's key order
 }
 
 void Player::notePowerLost(PlayerStatus s) {
@@ -590,14 +601,8 @@ void Player::addNightmare(const CardInstance &c) {
 }
 
 void Player::applyEndOfTurnPowers(BattleContext &bc) {
-    // Powers trigger in the order they were gained. This pair shows: Combust's HP loss draws (Runic Cube, Centennial
-    // Puzzle) only if No Draw has already gone.
-    const bool noDrawGoesFirst = noDrawBeforeCombust && hasStatus<PS::NO_DRAW>();
-    noDrawBeforeCombust = false;
-    if (noDrawGoesFirst) {
-        bc.addToBot(Actions::RemoveStatus<PS::NO_DRAW>());
-    }
-
+    // Powers trigger in the order they were gained, with Constricted always last. It shows when No Draw comes off: HP loss
+    // from Combust or Constricted draws (Runic Cube, Centennial Puzzle) only if No Draw has already gone.
     if (bomb1) {
         bc.addToBot( Actions::DamageAllEnemy(bomb1) );
     }
@@ -627,6 +632,10 @@ void Player::applyEndOfTurnPowers(BattleContext &bc) {
                 bc.addToBot(Actions::DamagePlayer(pair.second));
                 break;
 
+            case PS::NO_DRAW:
+                bc.addToBot(Actions::RemoveStatus<PS::NO_DRAW>());
+                break;
+
             case PS::AMPLIFY:
                 bc.addToBot(Actions::RemoveStatus<PS::AMPLIFY>());
                 break;
@@ -639,8 +648,12 @@ void Player::applyEndOfTurnPowers(BattleContext &bc) {
                 bc.addToBot(Actions::RemoveStatus<PS::ENTANGLED>());
                 break;
 
-            case PS::EQUILIBRIUM:
-                // todo if card is ethereal set to retain
+            case PS::EQUILIBRIUM: // goes through limbo like any retained card, so onRetained runs
+                for (int i = 0; i < bc.cards.cardsInHand; ++i) {
+                    if (!bc.cards.hand[i].isEthereal()) {
+                        bc.cards.hand[i].retain = true;
+                    }
+                }
                 break;
 
             case PS::ESTABLISHMENT:
@@ -698,9 +711,6 @@ void Player::applyEndOfTurnPowers(BattleContext &bc) {
         }
     }
 
-    if (hasStatus<PS::NO_DRAW>() && !noDrawGoesFirst) {
-        bc.addToBot(Actions::RemoveStatus<PS::NO_DRAW>());
-    }
 }
 
 void Player::applyAtEndOfRoundPowers() {
@@ -963,14 +973,19 @@ void Player::applyStartOfTurnPowers(BattleContext &bc) {
 }
 
 void Player::applyStartOfTurnPostDrawRelics(BattleContext &bc) {
-    // ****** Player Relics AtTurnStartPostDraw ******
+    // ****** Player Relics AtTurnStartPostDraw, in the order gained ******
+    const bool tongsFirst = bc.miscBits.test(3);
+    if (tongsFirst && hasRelic<R::WARPED_TONGS>()) {
+        bc.addToBot(Actions::UpgradeRandomCardAction());
+    }
+
     if (hasRelic<R::POCKETWATCH>()) {
         if (cardsPlayedThisTurn <= 3) {
             bc.addToBot(Actions::DrawCards(3));
         }
     }
 
-    if (hasRelic<R::WARPED_TONGS>()) {
+    if (!tongsFirst && hasRelic<R::WARPED_TONGS>()) {
         bc.addToBot(Actions::UpgradeRandomCardAction());
     }
 }
@@ -1207,15 +1222,3 @@ namespace sts {
 
 
 }
-
-
-
-
-
-
-
-
-
-
-
-

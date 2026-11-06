@@ -24,6 +24,9 @@ namespace sts {
         static constexpr int MAX_HAND_SIZE = 10;
         static constexpr int MAX_GROUP_SIZE = 64;
 
+        // Temp cards put in the draw pile since the hand last had applyPowers run, which only certain actions do. Mind Blast
+        // in hand works its damage out from the draw pile at that time, so it doesn't count these yet.
+        std::int16_t drawPileAddedUnseen = 0;
         int nextUniqueCardId = 0; // unique card ids that are less than the masterDeckSize are non-temporary
 
         int cardsInHand = 0;
@@ -47,7 +50,7 @@ namespace sts {
         int drawPileBloodCardCount = 0;
         int discardPileBloodCardCount = 0;
 
-        void init(const GameContext &gc, BattleContext &bc); // returns count of innate cards
+        int init(const GameContext &gc, BattleContext &bc); // returns the innate cards beyond the first turn's draw
 
         void createDeckCardInstanceInDrawPile(const Card &card, int deckIdx, int drawIdx);
         void createTempCardInDrawPile(int insertIdx, CardInstance c);

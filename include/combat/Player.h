@@ -87,6 +87,8 @@ namespace sts {
         std::uint8_t powerOrderCount = 0;
         void notePowerGained(PlayerStatus s);
         void notePowerLost(PlayerStatus s);
+        // Whether a acts before b among the powers, in the game's order. One the order doesn't know about comes last.
+        [[nodiscard]] bool actsBefore(PlayerStatus a, PlayerStatus b) const;
 
         std::uint64_t relicBits0 = 0;
         std::uint64_t relicBits1 = 0;
@@ -104,7 +106,6 @@ namespace sts {
         bool emotionChipPulse = false; // EmotionChip.pulse: HP was lost since the last turn started
 
         int8_t  combustHpLoss = 0;
-        bool noDrawBeforeCombust = false; // powers act in the order gained, which statusMap doesn't keep
         int16_t  devaFormEnergyPerTurn = 0;
         int8_t  echoFormCardsDoubled = 0;
         int8_t  panacheCounter = 0;

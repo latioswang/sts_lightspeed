@@ -250,7 +250,7 @@ Action Actions::MakeTempCardInHand(CardInstance card, int amount) {
             bc.upgradeIfMasterReality(c);
             c.uniqueId = bc.cards.nextUniqueCardId++;
             bc.cards.notifyAddCardToCombat(c);
-            bc.moveToHandHelper(c);
+            bc.addNewCardToHand(c);
         }
     }};
 }
@@ -301,7 +301,7 @@ Action Actions::MakeTempCardsInHand(std::vector<CardInstance> cards) {
             bc.upgradeIfMasterReality(c);
             c.uniqueId = bc.cards.nextUniqueCardId++;
             bc.cards.notifyAddCardToCombat(c);
-            bc.moveToHandHelper(c);
+            bc.addNewCardToHand(c);
         }
     }};
 }

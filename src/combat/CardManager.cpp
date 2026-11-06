@@ -12,7 +12,7 @@
 
 using namespace sts;
 
-void CardManager::init(const sts::GameContext &gc, BattleContext &bc) {
+int CardManager::init(const sts::GameContext &gc, BattleContext &bc) {
 
 //    masterDeckSize = gc.deck.size();
     nextUniqueCardId = gc.deck.size();
@@ -62,10 +62,8 @@ void CardManager::init(const sts::GameContext &gc, BattleContext &bc) {
         }
     }
 
-    int innateCount =  innateIdx - normalCount;
-    if (innateCount  > bc.player.cardDrawPerTurn) {
-        bc.addToBot( Actions::DrawCards(innateCount-bc.player.cardDrawPerTurn) );
-    }
+    const int innateCount = innateIdx - normalCount;
+    return std::max(0, innateCount - bc.player.cardDrawPerTurn);
 }
 
 void CardManager::createDeckCardInstanceInDrawPile(const Card &card, int deckIdx, int drawIdx) {
@@ -97,6 +95,7 @@ void CardManager::createTempCardInDrawPile(int idx, CardInstance c) {
     c.uniqueId = static_cast<std::int16_t>(nextUniqueCardId++);
     notifyAddCardToCombat(c);
     notifyAddToDrawPile(c);
+    ++drawPileAddedUnseen;
     drawPile.insert(drawPile.begin()+idx, c);
 }
 
@@ -182,7 +181,11 @@ void CardManager::moveToHand(const CardInstance &c) {
 
 void CardManager::moveToExhaustPile(const CardInstance &c) {
     notifyRemoveFromCombat(c);
-    exhaustPile.push_back(c);
+    // ExhaustCardEffect.update calls resetAttributes on the card a moment later, so a cost for the turn (Mummified
+    // Hand, Bullet Time) is gone by the time Exhume can bring it back. A cost changed for the combat stays.
+    CardInstance exhausted = c;
+    exhausted.setCostForTurn(exhausted.cost);
+    exhaustPile.push_back(exhausted);
 }
 
 
@@ -460,6 +463,7 @@ void CardManager::draw(BattleContext &bc, int amount) {
 }
 
 void CardManager::onCardDrawOrDiscard(const BattleContext &bc) {
+    drawPileAddedUnseen = 0;  // it runs hand.applyPowers
     // AbstractPlayer.onCardDrawOrDiscard: skills in hand with another cost, from another turn or Snecko Oil, go back to 0.
     if (bc.player.hasStatus<PS::CORRUPTION>()) {
         for (int i = 0; i < cardsInHand; ++i) {

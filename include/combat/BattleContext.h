@@ -93,7 +93,7 @@ namespace sts {
 
         CardQueueItem curCardQueueItem;
 
-        std::bitset<32> miscBits; // 0 stolen gold check,
+        std::bitset<32> miscBits; // 0 stolen gold check, 1 escaped, 2 Stone Calendar gained before Nilry's Codex, 3 Warped Tongs before Pocketwatch
 
         // Lesson Learned upgrades a random card in the master deck. These are filled in only if the deck holds one.
         static constexpr std::int16_t SEARING_BLOW_DECK_IDX = 0x4000; // a flag on an entry below: it stays after an upgrade
@@ -178,6 +178,8 @@ namespace sts {
 
         void applyMakeCopy(CardInstance &c) const;
         void moveToHandHelper(CardInstance c);
+        // A new card from a MakeTemp action or a choice screen, the way ShowCardAndAddToHandEffect adds it.
+        void addNewCardToHand(CardInstance c);
         void upgradeIfMasterReality(CardInstance &c) const; // what MakeTempCard and the card effects do with Master Reality
         void changeStance(Stance newStance); // ChangeStanceAction
         void applyMantra(int amount);
@@ -251,6 +253,7 @@ namespace sts {
     template <PlayerStatus s>
     Action Actions::BuffPlayer(int amount) {
         return {[=] (BattleContext &bc) {
+            bc.cards.drawPileAddedUnseen = 0;  // AbstractDungeon.onModifyPower runs hand.applyPowers
             if (s == PlayerStatus::CORRUPTION && !bc.player.hasStatus<PS::CORRUPTION>()) {
                 bc.cards.onBuffCorruption();
             }
@@ -261,6 +264,7 @@ namespace sts {
     template <PlayerStatus s>
     Action Actions::DebuffPlayer(int amount, bool isSourceMonster) {
         return {[=] (BattleContext &bc) {
+            bc.cards.drawPileAddedUnseen = 0;  // AbstractDungeon.onModifyPower runs hand.applyPowers
             bc.player.debuff<s>(amount, isSourceMonster);
         }};
     }
@@ -268,6 +272,7 @@ namespace sts {
     template<PlayerStatus s>
     Action Actions::DecrementStatus(int amount) {
         return {[=] (BattleContext &bc) {
+            bc.cards.drawPileAddedUnseen = 0;  // AbstractDungeon.onModifyPower runs hand.applyPowers
             bc.player.decrementStatus<s>(amount);
         }};
     }
@@ -275,6 +280,7 @@ namespace sts {
     template <PlayerStatus s>
     Action Actions::RemoveStatus() {
         return {[=] (BattleContext &bc) {
+            bc.cards.drawPileAddedUnseen = 0;  // AbstractDungeon.onModifyPower runs hand.applyPowers
             bc.player.setHasStatus<s>(false);
         }};
     }
@@ -316,6 +322,7 @@ namespace sts {
     template<MonsterStatus s>
     Action Actions::BuffEnemy(int idx, int amount) {
         return {[=] (BattleContext &bc) {
+            bc.cards.drawPileAddedUnseen = 0;  // AbstractDungeon.onModifyPower runs hand.applyPowers
             // ApplyPowerAction does nothing to a dead, half-dead or escaped target.
             if (!bc.monsters.arr[idx].isDeadOrEscaped()) {
                 bc.monsters.arr[idx].buff<s>(amount);
@@ -326,6 +333,7 @@ namespace sts {
     template <MonsterStatus s>
     Action Actions::DebuffEnemy(int idx, int amount, bool isSourceMonster) {
         return {[=] (BattleContext &bc) {
+            bc.cards.drawPileAddedUnseen = 0;  // AbstractDungeon.onModifyPower runs hand.applyPowers
             bc.debuffEnemy<s>(idx, amount, isSourceMonster);
         }};
     }
@@ -336,6 +344,7 @@ namespace sts {
         // ^^ never mind i think adding to top is a workaround here
 
         return {[=] (BattleContext &bc) {
+            bc.cards.drawPileAddedUnseen = 0;  // AbstractDungeon.onModifyPower runs hand.applyPowers
             for (int i = bc.monsters.monsterCount-1; i >= 0; --i) {
                 if (bc.monsters.arr[i].isTargetable()) {
                     bc.addToTop(Actions::DebuffEnemy<s>(i, amount, isSourceMonster));

@@ -821,7 +821,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
         case MMID::HEXAGHOST_SEAR: // 4
             attackPlayerHelper(bc, 6);
             bc.addToBot (
-                    Actions::MakeTempCardInDiscard(CardInstance(CardId::BURN, bc.turn > 8), asc19 ? 2 : 1)
+                    Actions::MakeTempCardInDiscard(CardInstance(CardId::BURN, bc.getMonsterTurnNumber() > 9), asc19 ? 2 : 1)
             );
             if (uniquePower0 == 0) {
                 setMove(MMID::HEXAGHOST_TACKLE);
@@ -885,7 +885,7 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             break;
 
         case MMID::LAGAVULIN_SLEEP:
-            if (bc.turn == 2 && hasStatus<MS::ASLEEP>()) {
+            if (bc.getMonsterTurnNumber() == 3 && hasStatus<MS::ASLEEP>()) { // idleCount only moves on a turn it takes
                 // The third idle turn wakes it with a SetMoveAction, so this one rolls nothing.
                 setHasStatus<MS::ASLEEP>(false);
                 decrementStatus<MS::METALLICIZE>(8);
@@ -1343,13 +1343,25 @@ void Monster::takeTurn(BattleContext &bc) {     // todo, maybe for monsters that
             setMove(MMID::THE_GUARDIAN_TWIN_SLAM);
             break;
 
-        case MMID::THE_GUARDIAN_TWIN_SLAM:
+        case MMID::THE_GUARDIAN_TWIN_SLAM: {
+            // Its ChangeStateAction goes first and reopens the threshold, so damage from the slams' own hits (thorns,
+            // Static Discharge) counts. The Mode Shift it applies and the Reset Threshold after come last.
+            miscInfo += 10;
+            buff<MS::MODE_SHIFT>(0);  // setStatus alone doesn't mark it held
+            setStatus<MS::MODE_SHIFT>(miscInfo);
             attackPlayerHelper(bc, 8, 2);
             removeStatus<MS::SHARP_HIDE>();
-            miscInfo += 10;
             setMove(MMID::THE_GUARDIAN_WHIRLWIND);
-            bc.addToBot( Actions::BuffEnemy<MS::MODE_SHIFT>(idx, miscInfo) );
+            const int guardianIdx = idx;
+            const int threshold = miscInfo;
+            bc.addToBot( Action{[=] (BattleContext &b) {
+                auto &guardian = b.monsters.arr[guardianIdx];
+                if (guardian.hasStatus<MS::MODE_SHIFT>()) {  // otherwise broken already, and going defensive again
+                    guardian.setStatus<MS::MODE_SHIFT>(threshold);
+                }
+            }} );
             break;
+        }
 
         case MMID::THE_GUARDIAN_VENT_STEAM:
             bc.addToBot( Actions::DebuffPlayer<PS::WEAK>(2, true) );
@@ -3535,12 +3547,14 @@ void Monster::returnStasisCard(BattleContext &bc) {
 #endif
 
     // StasisPower.onDeath queues this, so the card lands behind anything already queued, such as the next turn's draw.
-    const CardInstance returned = stasisCard;
+    // The card comes back through a MakeTemp action, whose constructor applies Master Reality.
+    CardInstance returned = stasisCard;
+    bc.upgradeIfMasterReality(returned);
     stasisCard = {CardId::INVALID};
     bc.addToBot({[=](BattleContext &b) {
         CardInstance card = returned;
         b.cards.notifyAddCardToCombat(card);
-        b.moveToHandHelper(card);
+        b.addNewCardToHand(card);
     }});
 }
 

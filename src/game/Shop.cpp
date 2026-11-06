@@ -130,7 +130,9 @@ void Shop::buyRelic(GameContext &gc, int idx) {
 
     if (r == RelicId::MEMBERSHIP_CARD) {
         applyDiscount(MEMBERSHIP_CARD_FACTOR);
-        removeCost = static_cast<int>(std::round(static_cast<float>(removeCost) * MEMBERSHIP_CARD_FACTOR));
+        if (removeCost != -1) {
+            removeCost = getRemoveCost(gc);  // applyDiscount works the purge cost out from the base again
+        }
     }
     if ((r == RelicId::SMILING_MASK || gc.hasRelic(RelicId::SMILING_MASK)) && removeCost != -1) {
         removeCost = SMILING_MASK_PRICE;
@@ -234,14 +236,13 @@ int Shop::getRemoveCost(const GameContext &gc) {
         cost = BASE_REMOVE_PRICE+(REMOVE_PRICE_INCREASE*gc.shopRemoveCount);
     }
 
-    if (gc.hasRelic(RelicId::THE_COURIER) && gc.hasRelic(RelicId::MEMBERSHIP_CARD)) {
-        cost = std::round(static_cast<float>(cost) * COURIER_FACTOR * MEMBERSHIP_CARD_FACTOR);
+    // ShopScreen.init calls applyDiscount for The Courier and then for Membership Card, and each sets the purge cost
+    // from its base, so with both only the second counts.
+    if (gc.hasRelic(RelicId::MEMBERSHIP_CARD)) {
+        cost = std::round(static_cast<float>(cost) * MEMBERSHIP_CARD_FACTOR);
 
     } else if (gc.hasRelic(RelicId::THE_COURIER)) {
         cost = std::round(static_cast<float>(cost) * COURIER_FACTOR);
-
-    } else if (gc.hasRelic(RelicId::MEMBERSHIP_CARD)) {
-        cost = std::round(static_cast<float>(cost) * MEMBERSHIP_CARD_FACTOR);
     }
     return cost;
 }

@@ -212,7 +212,13 @@ CardId sts::getTrulyRandomCard(Random &cardRandomRng, CharacterClass cc) {
 }
 
 CardId sts::returnTrulyRandomColorlessCardFromAvailable(Random &rng, CardId exclude) {
-    return randomCardExcept(rng, srcColorlessCardPool, srcColorlessCardPoolSize, exclude);
+    // srcColorlessCardPool: initializeCardPools moves colorlessCardPool across with addToBottom, so it's that list backwards.
+    static const auto pool = [] {
+        auto reversed = baseColorlessPool;
+        std::reverse(reversed.begin(), reversed.end());
+        return reversed;
+    }();
+    return randomCardExcept(rng, pool.data(), static_cast<int>(pool.size()), exclude);
 }
 
 CardId sts::getTrulyRandomColorlessCardInCombat(Random &cardRandomRng) {

@@ -14,12 +14,13 @@ bool CardQueue::isEmpty() const {
 bool CardQueue::containsCardWithId(int uniqueId) const {
     int idx = frontIdx;
     for (int i = 0; i < size; ++i) {
-        if (frontIdx >= capacity) {
+        if (idx >= capacity) {
             idx = 0;
         }
         if (arr[idx].card.getUniqueId() == uniqueId) {
             return true;
         }
+        ++idx;
     }
     return false;
 }

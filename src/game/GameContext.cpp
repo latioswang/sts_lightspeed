@@ -1103,15 +1103,14 @@ void GameContext::enterBattle(MonsterEncounter encounter) {
     screenState = ScreenState::BATTLE;
     info.encounter = encounter;
     if (skipBattles) {
+        if (hasRelic(RelicId::FACE_OF_CLERIC)) {  // a real fight does this as it exits
+            playerIncreaseMaxHp(1);
+        }
         afterBattle();
     }
 }
 
 void GameContext::afterBattle() {
-    if (hasRelic(RelicId::FACE_OF_CLERIC)) {
-        playerIncreaseMaxHp(1);
-    }
-
     switch (curRoom) {
         case Room::MONSTER: {
             regainControlAction = returnToMapAction;
@@ -1672,7 +1671,8 @@ CardRarity GameContext::rollCardRarity(Room room) {
     int rareChance = room == Room::ELITE ? 10 : (room == Room::SHOP ? 9 : 3);  // ShopRoom sets baseRareCardChance, for Orrery and Cauldron
     const int uncommonChance = (room == Room::ELITE ? 40 : 37);
 
-    if (room != Room::REST && hasRelic(RelicId::NLOTHS_GIFT)) {
+    // ShopRoom and RestRoom roll with getCardRarity(roll, false), which skips the relics' alterCardRarityProbabilities.
+    if (room != Room::REST && room != Room::SHOP && hasRelic(RelicId::NLOTHS_GIFT)) {
         rareChance = rareChance * 3;
     }
 
@@ -1710,7 +1710,7 @@ Card GameContext::getTransformedCard(Random &rng, CardId exclude, bool autoUpgra
     if (color == CardColor::CURSE) {
         return getRandomCurse(rng, exclude);
     } else  if (color == CardColor::COLORLESS) {
-        return returnTrulyRandomColorlessCardFromAvailable(rng, exclude);
+        return Card(returnTrulyRandomColorlessCardFromAvailable(rng, exclude), autoUpgrade ? 1 : 0);
     }
 
     CardId transformCard = returnTrulyRandomCardFromAvailable(rng, exclude);
@@ -1799,8 +1799,11 @@ void GameContext::addPotionRewards(Rewards &r) {
         chance = 100;
     }
 
-    int rewardsSize = r.potionCount + r.relicCount + r.goldRewardCount + r.cardRewardCount;
-    if (rewardsSize >= 4) {
+    // AbstractRoom.addPotionToRewards counts every item already in the room's list, keys included. BaseMod's
+    // FixUnnecessaryRewardCulling has that count read -1.
+    int rewardsSize = r.potionCount + r.relicCount + r.goldRewardCount + r.cardRewardCount +
+                      (r.emeraldKey ? 1 : 0) + (r.sapphireKey ? 1 : 0);
+    if (!baseModFixes && rewardsSize >= 4) {
         chance = 0;
     }
 
@@ -1941,14 +1944,19 @@ void GameContext::openTreasureRoomChest() {
         reward.addGold(amount);
     }
 
-    auto relic = returnRandomRelic(info.tier, false);
+    const bool matryoshkaRelic = reward.relicCount > 0;
+    reward.addRelic(returnRandomRelic(info.tier, false));
+    if (!hasKey(Key::SAPPHIRE_KEY)) {
+        reward.sapphireKey = true;  // linked to the chest's relic, the last one
+    }
     if (hasRelic(RelicId::NLOTHS_HUNGRY_FACE) && relics.getRelicValue(RelicId::NLOTHS_HUNGRY_FACE) > 0) {
-        // removeOneRelicFromRewards takes the sapphire key linked to the relic as well
+        // removeOneRelicFromRewards takes the first relic in the list. Matryoshka's comes before the gold and the
+        // chest's relic, so that one goes and the chest's relic keeps its key. Otherwise the chest's relic goes, and the
+        // key linked to it with it.
         --relics.getRelicValueRef(RelicId::NLOTHS_HUNGRY_FACE);
-    } else {
-        reward.addRelic(relic);
-        if (!hasKey(Key::SAPPHIRE_KEY)) {
-            reward.sapphireKey = true;
+        reward.removeRelicReward(0);
+        if (!matryoshkaRelic) {
+            reward.sapphireKey = false;
         }
     }
 
@@ -1986,10 +1994,15 @@ Rewards GameContext::createEliteCombatReward() {
     if (hasRelic(RelicId::BLACK_STAR)) {
         reward.addRelic(returnNonCampfireRelic(returnRandomRelicTierElite(relicRng)));
     }
-    reward.emeraldKey = map->burningEliteX == curMapNodeX && map->burningEliteY == curMapNodeY;
+    reward.emeraldKey = atBurningElite();
     addPotionRewards(reward);
     reward.addCardReward(createCardReward(Room::ELITE));
     return reward;
+}
+
+bool GameContext::atBurningElite() const {
+    // MonsterRoomElite.addEmeraldKey: only while the key is still missing.
+    return !hasKey(Key::EMERALD_KEY) && map->burningEliteX == curMapNodeX && map->burningEliteY == curMapNodeY;
 }
 
 Rewards GameContext::createBossCombatReward() {
@@ -2060,7 +2073,7 @@ Event GameContext::getEvent(Random &eventRngCopy) {
     }
 
     if (tempLength == 0) {
-        return getShrine(eventRng);
+        return getShrine(eventRngCopy);
     }
 
     auto idx = eventRngCopy.random(tempLength-1);
@@ -2215,7 +2228,7 @@ void GameContext::loseGold(int amount, bool inShop) {
 }
 
 void GameContext::loseMaxHp(int amount) {
-    maxHp -= amount;
+    maxHp = std::max(1, maxHp - amount); // decreaseMaxHealth
     curHp = std::min(curHp, maxHp);
 }
 
@@ -2255,17 +2268,19 @@ void GameContext::drinkPotion(Potion p) {
 }
 
 void GameContext::afterEscape() {
-    // Smoke Bomb: the end of the fight still rolls gold and a potion, but the reward screen opens without them.
-    if (curRoom == Room::MONSTER) {
-        treasureRng.random(10, 20);
-    } else if (curRoom == Room::ELITE) {
-        treasureRng.random(25, 35);
-        returnRandomRelic(returnRandomRelicTierElite(relicRng));
-        if (hasRelic(RelicId::BLACK_STAR)) {
-            returnNonCampfireRelic(returnRandomRelicTierElite(relicRng));
-        }
-    }
+    // Smoke Bomb: the end of the fight still rolls gold, relics and a potion, but the reward screen opens without them.
+    // The potion's chance still counts what the room holds by then, the Emerald Key included.
     Rewards discarded;
+    if (curRoom == Room::MONSTER) {
+        discarded.addGold(treasureRng.random(10, 20));
+    } else if (curRoom == Room::ELITE) {
+        discarded.addGold(treasureRng.random(25, 35));
+        discarded.addRelic(returnRandomRelic(returnRandomRelicTierElite(relicRng)));
+        if (hasRelic(RelicId::BLACK_STAR)) {
+            discarded.addRelic(returnNonCampfireRelic(returnRandomRelicTierElite(relicRng)));
+        }
+        discarded.emeraldKey = atBurningElite();
+    }
     addPotionRewards(discarded);
     if (curRoom == Room::EVENT && curEvent == Event::COLOSSEUM) {
         if (info.eventData == 0) {
@@ -2304,6 +2319,18 @@ void GameContext::discardPotionAtIdx(int idx) {
     --potionCount;
 }
 
+// For an event that gives both. The game creates the curse's obtain effect first, and that's where Omamori checks, so the
+// relic found here can't stop this curse. Everything else about the curse happens after the relic is in.
+static void obtainRelicAndCurse(GameContext &gc, RelicId relic, CardId curse) {
+    if (relic == RelicId::OMAMORI) {
+        gc.deck.obtain(gc, curse);
+        gc.obtainRelic(relic);
+    } else {
+        gc.obtainRelic(relic);
+        gc.deck.obtain(gc, curse);
+    }
+}
+
 void GameContext::chooseNeowOption(const Neow::Option &o) {
 
     switch (o.d) {
@@ -2315,9 +2342,13 @@ void GameContext::chooseNeowOption(const Neow::Option &o) {
             gold = 0;
             break;
 
-        case Neow::Drawback::PERCENT_DAMAGE:
-            curHp -= curHp / 10 * 3;
+        case Neow::Drawback::PERCENT_DAMAGE: {  // player.damage with HP_LOSS, so Tungsten Rod takes 1 off
+            const int damage = curHp / 10 * 3;
+            if (damage > 0) {
+                playerLoseHp(damage);
+            }
             break;
+        }
 
         case Neow::Drawback::LOSE_STARTER_RELIC:
             relics.remove(relics.relics.front().id); // NeowReward takes whatever is in slot 0
@@ -2403,11 +2434,14 @@ void GameContext::chooseNeowOption(const Neow::Option &o) {
             regainControlAction(*this);
             break;
 
-        case Neow::Bonus::RANDOM_COLORLESS_2:
-            regainControlAction(*this); // hack because curse is received first
+        case Neow::Bonus::RANDOM_COLORLESS_2: {
+            // NeowReward.activate rolls these cards from cardRng, and the curse comes after them in update.
+            const auto reward = Neow::getColorlessCardReward(neowRng, cardRng, true);
+            regainControlAction(*this);
             regainControlAction = returnToMapAction;
-            openCombatRewardScreen(Neow::getColorlessCardReward(neowRng, cardRng, true));
+            openCombatRewardScreen(reward);
             break;
+        }
 
         case Neow::Bonus::REMOVE_TWO:
             openCardSelectScreen(CardSelectScreenType::REMOVE, 2);
@@ -2433,6 +2467,11 @@ void GameContext::chooseNeowOption(const Neow::Option &o) {
         case Neow::Bonus::TRANSFORM_TWO_CARDS:
             info.transformRng = NEOW_RNG;
             openCardSelectScreen(CardSelectScreenType::TRANSFORM, 2);
+            if (o.d == Neow::Drawback::CURSE) {
+                // NeowReward.update rolls it at once, but its obtain effect takes a moment, so it isn't on the grid or in
+                // the deck yet. It started first, so it lands before the transformed cards.
+                info.neowCurse = curseCardPool[cardRng.random(static_cast<int>(9))];
+            }
             regainControlAction = returnToMapAction;
             break;
 
@@ -2547,8 +2586,7 @@ void GameContext::chooseEventOption(int idx) {
 
                 case 1: {
                     auto r = returnRandomScreenlessRelic(returnRandomRelicTier(relicRng, act), false);
-                    obtainRelic(r);
-                    deck.obtain(*this, CardId::SHAME);
+                    obtainRelicAndCurse(*this, r, CardId::SHAME);
                     regainControl();
                     break;
                 }
@@ -2607,8 +2645,7 @@ void GameContext::chooseEventOption(int idx) {
 
                 case 2: {
                     auto r = returnRandomScreenlessRelic(returnRandomRelicTier(relicRng, act));
-                    obtainRelic(r);
-                    deck.obtain(*this, CardId::REGRET);
+                    obtainRelicAndCurse(*this, r, CardId::REGRET);
                     regainControl();
                     break;
                 }
@@ -2669,9 +2706,17 @@ void GameContext::chooseEventOption(int idx) {
 
                 case 5: {
                     playerLoseHp(unfavorable ? 15 : 10);
-                    auto res = miscRng.random(2);
-                    auto book = res == 0 ? RelicId::NECRONOMICON :
-                                (res == 1 ? RelicId::ENCHIRIDION : RelicId::NILRYS_CODEX);
+                    // CursedTome.randomBook only offers the books the player lacks, and Circlet with none left.
+                    fixed_list<RelicId, 3> books;
+                    for (const auto b : {RelicId::NECRONOMICON, RelicId::ENCHIRIDION, RelicId::NILRYS_CODEX}) {
+                        if (!relics.has(b)) {
+                            books.push_back(b);
+                        }
+                    }
+                    if (books.empty()) {
+                        books.push_back(RelicId::CIRCLET);
+                    }
+                    const auto book = books[miscRng.random(static_cast<int>(books.size()) - 1)];
 
                     Rewards reward;
                     reward.addRelic(book);
@@ -2801,11 +2846,19 @@ void GameContext::chooseEventOption(int idx) {
 
                 case 1:
                     info.transformRng = MISC_RNG;
-                    openCardSelectScreen(CardSelectScreenType::TRANSFORM, 2);
+                    // DrugDealer.transform opens on every purgeable card, bottled ones too, unlike other events.
+                    info.toSelectCards.clear();
+                    for (int i = 0; i < deck.size(); ++i) {
+                        if (deck.cards[i].canTransform()) {
+                            info.toSelectCards.push_back({deck.cards[i], i});
+                        }
+                    }
+                    openCardSelectScreen(CardSelectScreenType::TRANSFORM, 2, false);
                     break;
 
                 case 2:
-                    obtainRelic(RelicId::MUTAGENIC_STRENGTH);
+                    // DrugDealer.buttonEffect gives Circlet if the relic is already held
+                    obtainRelic(hasRelic(RelicId::MUTAGENIC_STRENGTH) ? RelicId::CIRCLET : RelicId::MUTAGENIC_STRENGTH);
                     regainControl();
                     break;
 
@@ -3172,7 +3225,8 @@ void GameContext::chooseEventOption(int idx) {
                 regainControlAction = [=](GameContext &gc) {
                     Rewards reward;
                     reward.addGold(gc.goldWithIdol(goldAmt));
-                    reward.addRelic(RelicId::ODD_MUSHROOM);
+                    // Mushrooms.buttonEffect gives Circlet if the relic is already held
+                    reward.addRelic(gc.hasRelic(RelicId::ODD_MUSHROOM) ? RelicId::CIRCLET : RelicId::ODD_MUSHROOM);
                     gc.addPotionRewards(reward);
                     reward.addCardReward(gc.createCardReward(Room::EVENT));
                     gc.openCombatRewardScreen(reward);
@@ -3429,18 +3483,12 @@ void GameContext::chooseEventOption(int idx) {
 
         case Event::THE_MAUSOLEUM: {
             if (idx == 0) {
-                // The game creates the curse's obtain effect first, and that's where Omamori checks, so the relic
-                // found here can't stop this curse. Everything else about the curse happens after the relic is in.
                 const auto result = miscRng.randomBoolean();
                 const auto relic = returnRandomScreenlessRelic(returnRandomRelicTier(relicRng, act));
-                if (relic == RelicId::OMAMORI && (result || unfavorable)) {
-                    deck.obtain(*this, CardId::WRITHE);
-                    obtainRelic(relic);
+                if (result || unfavorable) {
+                    obtainRelicAndCurse(*this, relic, CardId::WRITHE);
                 } else {
                     obtainRelic(relic);
-                    if (result || unfavorable) {
-                        deck.obtain(*this, CardId::WRITHE);
-                    }
                 }
                 regainControl();
 
@@ -3781,7 +3829,8 @@ void GameContext::chooseSelectCardScreenOption(int idx) {
             const SelectScreenCard &c = info.haveSelectedCards[0];
             switch (c.card.getRarity()) {
                 case CardRarity::CURSE:
-                    obtainRelic(RelicId::SPIRIT_POOP);
+                    // Bonfire.setReward gives Circlet if the relic is already held
+                    obtainRelic(hasRelic(RelicId::SPIRIT_POOP) ? RelicId::CIRCLET : RelicId::SPIRIT_POOP);
                     break;
 
                 case CardRarity::BASIC:
@@ -3851,7 +3900,6 @@ void GameContext::chooseCampfireOption(int idx) {
 
         case 4: { // TOKE
             openCardSelectScreen(CardSelectScreenType::REMOVE, 1);
-            regainControl();
             break;
         }
 
@@ -3890,6 +3938,10 @@ void GameContext::selectScreenTransform() {
     }
 
     deck.removeSelected(*this, info.haveSelectedCards);
+    if (info.neowCurse != CardId::INVALID) {
+        deck.obtain(*this, info.neowCurse);
+        info.neowCurse = CardId::INVALID;
+    }
     for (const auto &c : info.haveSelectedCards) {
         Card transformCard = getTransformedCard(*rng, c.card.id);
         deck.obtain(*this, transformCard);
