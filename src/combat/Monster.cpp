@@ -280,6 +280,22 @@ void Monster::addBlock(int amount) {
     block += amount;
 }
 
+namespace {
+
+// Awakened One's first death leaves it half dead until it rises on its turn, so killing the Cultists then doesn't end the
+// fight. MonsterGroup.areMonstersBasicallyDead doesn't count a half dead monster as dying.
+bool awakenedOneWillRise(const BattleContext &bc) {
+    for (int i = 0; i < bc.monsters.monsterCount; ++i) {
+        const auto &m = bc.monsters.arr[i];
+        if (m.id == MonsterId::AWAKENED_ONE && m.isHalfDead()) {
+            return true;
+        }
+    }
+    return false;
+}
+
+}  // namespace
+
 void Monster::die(BattleContext &bc) {
     if (id == MonsterId::MUGGER) {
         bc.aiRng.random(2); // for a death sound in game
@@ -297,7 +313,7 @@ void Monster::die(BattleContext &bc) {
         setMove(MonsterMoveId::AWAKENED_ONE_REBIRTH);
         bc.cardQueue.clear();
 
-    } else if (bc.monsters.monstersAlive == 0 || hasStatus<MS::MINION_LEADER>()) {
+    } else if ((bc.monsters.monstersAlive == 0 && !awakenedOneWillRise(bc)) || hasStatus<MS::MINION_LEADER>()) {
 //            bc.cleanCardQueue(); // todo should this really return like this?
         bc.outcome = Outcome::PLAYER_VICTORY;
         return;
