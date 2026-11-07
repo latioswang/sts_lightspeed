@@ -1373,11 +1373,14 @@ Action Actions::PutRandomCardsInDrawPile(CardType type, int count) {
 
         for (int i = 0; i < count; ++i) {
             CardInstance card(ids[i], false);
-            bc.upgradeIfMasterReality(card);
+            // Chrysalis.use and Metamorphosis.use make the card free before MakeTempCardInDrawPileAction upgrades it for
+            // Master Reality. An upgrade that lowers the cost (Vault) then sets the cost to the upgraded one, and only
+            // this turn's stays 0.
             if (card.cost > 0) {
                 card.cost = 0;
                 card.costForTurn = 0;
             }
+            bc.upgradeIfMasterReality(card);
 
             const int idx = bc.cards.drawPile.empty() ? 0 : bc.cardRandomRng.random(static_cast<int>(bc.cards.drawPile.size()-1));
             bc.cards.createTempCardInDrawPile(idx, card);
