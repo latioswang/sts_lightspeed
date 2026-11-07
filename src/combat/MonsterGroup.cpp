@@ -31,6 +31,14 @@ int MonsterGroup::getTargetableCount() const {
     return count;
 }
 
+std::uint32_t MonsterGroup::getTargetableMask() const {
+    std::uint32_t mask = 0;
+    for (int i = 0; i < monsterCount; ++i) {
+        mask |= static_cast<std::uint32_t>(arr[i].isTargetable()) << i;
+    }
+    return mask;
+}
+
 int MonsterGroup::getFirstTargetable() const {
     for (int i = 0; i < monsterCount; ++i) {
         if (arr[i].isTargetable()) {

@@ -27,6 +27,8 @@ namespace sts {
         [[nodiscard]] int getAliveCount() const;
         [[nodiscard]] int getTargetableCount() const; // calculated here, not fast
         [[nodiscard]] int getFirstTargetable() const;
+        // one bit per monster below monsterCount that isTargetable allows: nonzero exactly when getFirstTargetable >= 0
+        [[nodiscard]] std::uint32_t getTargetableMask() const;
         [[nodiscard]] int getRandomMonsterIdx(Random &rng, bool aliveOnly=true) const;
 
         // initialization

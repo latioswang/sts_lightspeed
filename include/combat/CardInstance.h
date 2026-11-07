@@ -17,6 +17,17 @@ namespace sts {
     class BattleContext;
     class Card;
 
+    // What canUseApartFromTarget reads from the battle apart from the card, read once for a pass over the hand.
+    struct CardUseContext {
+        int energy;
+        bool entangled;
+        bool freeAttackPower;
+        bool blueCandle;
+        bool medicalKit;
+
+        explicit CardUseContext(const BattleContext &bc);
+    };
+
     struct CardInstance  {
         // bytes
         // 2*2
@@ -80,6 +91,8 @@ namespace sts {
         [[nodiscard]] bool canUseOnAnyTarget(const BattleContext &bc) const; // not for use in critical path
         [[nodiscard]] bool canUse(const BattleContext &bc, int target, bool inAutoplay) const;
         [[nodiscard]] bool canUseApartFromTarget(const BattleContext &bc, bool inAutoplay) const; // canUse once the target is known to be fine
+        // the same, with the battle-wide part read beforehand; ctx must come from the same, unchanged bc
+        [[nodiscard]] bool canUseApartFromTarget(const BattleContext &bc, const CardUseContext &ctx, bool inAutoplay) const;
     };
 
     std::ostream& operator <<(std::ostream &os, const CardInstance &c);

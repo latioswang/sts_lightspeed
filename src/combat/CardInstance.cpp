@@ -324,7 +324,18 @@ bool CardInstance::canUse(const BattleContext &bc, int target, const bool inAuto
     return canUseApartFromTarget(bc, inAutoplay);
 }
 
+CardUseContext::CardUseContext(const BattleContext &bc)
+    : energy(bc.player.energy),
+      entangled(bc.player.hasStatus<PS::ENTANGLED>()),
+      freeAttackPower(bc.player.hasStatus<PS::FREE_ATTACK_POWER>()),
+      blueCandle(bc.player.hasRelic<RelicId::BLUE_CANDLE>()),
+      medicalKit(bc.player.hasRelic<RelicId::MEDICAL_KIT>()) {}
+
 bool CardInstance::canUseApartFromTarget(const BattleContext &bc, const bool inAutoplay) const {
+    return canUseApartFromTarget(bc, CardUseContext(bc), inAutoplay);
+}
+
+bool CardInstance::canUseApartFromTarget(const BattleContext &bc, const CardUseContext &ctx, const bool inAutoplay) const {
 
     // this is handled elsewhere now
 //    if (purgeOnUse) {
@@ -335,7 +346,7 @@ bool CardInstance::canUseApartFromTarget(const BattleContext &bc, const bool inA
     // todo grand finale, signature move, reflex, deus ex machina, tactician
     switch (getType()) {
         case CardType::ATTACK:
-            if (bc.player.hasStatus<PS::ENTANGLED>()) {
+            if (ctx.entangled) {
                 return false;
             }
             if (getId() == CardId::CLASH && !canUseClash(bc)) {
@@ -380,13 +391,13 @@ bool CardInstance::canUseApartFromTarget(const BattleContext &bc, const bool inA
             break;
 
         case CardType::CURSE:
-            if (!bc.player.hasRelic<RelicId::BLUE_CANDLE>() && id != CardId::PRIDE) {
+            if (!ctx.blueCandle && id != CardId::PRIDE) {
                 return false;
             }
             break;
 
         case CardType::STATUS:
-            if (!bc.player.hasRelic<RelicId::MEDICAL_KIT>() && id != CardId::SLIMED) {
+            if (!ctx.medicalKit && id != CardId::SLIMED) {
                 return false;
             }
             break;
@@ -398,7 +409,9 @@ bool CardInstance::canUseApartFromTarget(const BattleContext &bc, const bool inA
             break;
     }
 
-    if (bc.player.energy < costForTurn && !isFreeToPlay(bc) && !inAutoplay) {
+    // isFreeToPlay, with Free Attack read beforehand
+    const bool freeToPlay = freeToPlayOnce || (getType() == CardType::ATTACK && ctx.freeAttackPower);
+    if (ctx.energy < costForTurn && !freeToPlay && !inAutoplay) {
         return false;
     }
 
