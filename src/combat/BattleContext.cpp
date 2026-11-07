@@ -3,6 +3,9 @@
 //
 
 #include "combat/BattleContext.h"
+
+#include <array>
+#include <iterator>
 #include "game/GameContext.h"
 #include "game/Game.h"
 
@@ -813,6 +816,77 @@ void BattleContext::clearPostCombatActions() {
 void BattleContext::cleanCardQueue() {
     // todo
     // not sure where this matters, as we don't queue more than 1 item at a time in the hand
+}
+
+namespace {
+    // Per card: its type, whether it targets an enemy, and whether canUseApartFromTarget or requiresTarget has a rule
+    // of its own for it. Derived from cardTypes and cardTargets, so it can't drift from them.
+    constexpr std::uint8_t kUseTypeBits = 0x7;
+    constexpr std::uint8_t kUseTargets = 0x8;
+    constexpr std::uint8_t kUseOwnRule = 0x10;
+
+    constexpr bool hasOwnUseRule(CardId id) {
+        switch (id) {
+            case CardId::CLASH:             // canUseApartFromTarget's own rules
+            case CardId::GRAND_FINALE:
+            case CardId::SIGNATURE_MOVE:
+            case CardId::REFLEX:
+            case CardId::TACTICIAN:
+            case CardId::DEUS_EX_MACHINA:
+            case CardId::SECRET_TECHNIQUE:
+            case CardId::SECRET_WEAPON:
+            case CardId::PRIDE:
+            case CardId::SLIMED:
+            case CardId::BLIND:             // cardTargetsEnemy depends on the upgrade
+            case CardId::TRIP:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    static_assert(std::size(cardTypes) == std::size(cardTargets));
+    constexpr auto kCardUseFlags = [] {
+        std::array<std::uint8_t, std::size(cardTypes)> flags{};
+        for (std::size_t i = 0; i < flags.size(); ++i) {
+            const auto type = cardTypes[i];
+            const bool ownRule = hasOwnUseRule(static_cast<CardId>(i)) || type == CardType::INVALID;
+            flags[i] = static_cast<std::uint8_t>(static_cast<int>(type) | (cardTargets[i] ? kUseTargets : 0)
+                                                 | (ownRule ? kUseOwnRule : 0));
+        }
+        return flags;
+    }();
+}
+
+std::uint32_t BattleContext::getPlayableHandMask(const std::uint32_t targetableMask) const {
+    // canUseOnAnyTarget for each card: a targetable monster exists exactly when the mask is nonzero. A card with no
+    // rule of its own needs only its type, energy and target checks, worked out without branches; the rest take the
+    // full check.
+    const CardUseContext ctx(*this);
+    const bool anyTargetable = targetableMask != 0;
+    const unsigned allowedTypes = (ctx.entangled ? 0u : 1u << static_cast<int>(CardType::ATTACK))
+                                  | 1u << static_cast<int>(CardType::SKILL)
+                                  | 1u << static_cast<int>(CardType::POWER)
+                                  | (ctx.blueCandle ? 1u << static_cast<int>(CardType::CURSE) : 0u)
+                                  | (ctx.medicalKit ? 1u << static_cast<int>(CardType::STATUS) : 0u);
+    std::uint32_t mask = 0;
+    for (int h = 0; h < cards.cardsInHand; ++h) {
+        const auto &c = cards.hand[h];
+        const auto flags = kCardUseFlags[static_cast<int>(c.id)];
+        bool ok;
+        if (flags & kUseOwnRule) {
+            ok = (anyTargetable || !c.requiresTarget()) && c.canUseApartFromTarget(*this, ctx, false);
+        } else {
+            const unsigned type = flags & kUseTypeBits;
+            const bool isAttack = type == static_cast<unsigned>(CardType::ATTACK);
+            const bool typeOk = (allowedTypes >> type & 1u) != 0;
+            const bool energyOk = (ctx.energy >= c.costForTurn) | c.freeToPlayOnce | (isAttack & ctx.freeAttackPower);
+            const bool targetOk = anyTargetable | ((flags & kUseTargets) == 0);
+            ok = typeOk & energyOk & targetOk;
+        }
+        mask |= static_cast<std::uint32_t>(ok) << h;
+    }
+    return mask;
 }
 
 bool BattleContext::isCardPlayAllowed() const {

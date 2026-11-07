@@ -155,6 +155,12 @@ namespace sts {
 
         [[nodiscard]] bool isCardPlayAllowed() const;
 
+        // One bit per hand index whose card canUseOnAnyTarget allows, worked out in one pass over the hand.
+        // targetableMask must be monsters.getTargetableMask() for this state; callers that need it too pass it in.
+#define STS_PLAYABLE_HAND_MASK 1
+        [[nodiscard]] std::uint32_t getPlayableHandMask(std::uint32_t targetableMask) const;
+        [[nodiscard]] std::uint32_t getPlayableHandMask() const { return getPlayableHandMask(monsters.getTargetableMask()); }
+
         // **********************
 
         void endTurn(); // called when player clicks the end turn button
