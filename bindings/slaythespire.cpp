@@ -31,7 +31,7 @@ PYBIND11_MODULE(slaythespire, m) {
     pybind11::class_<NNInterface> nnInterface(m, "NNInterface");
     nnInterface.def("getObservation", &NNInterface::getObservation, "get observation array given a GameContext")
         .def("getObservationMaximums", &NNInterface::getObservationMaximums, "get the defined maximum values of the observation space")
-        .def_property_readonly("observation_space_size", []() { return NNInterface::observation_space_size; });
+        .def_property_readonly("observation_space_size", [](const NNInterface &) { return NNInterface::observation_space_size; });
 
     pybind11::class_<search::ScumSearchAgent2> agent(m, "Agent");
     agent.def(pybind11::init<>());
