@@ -108,7 +108,7 @@ That builds the console game (`main`), the benchmarks and tools (`test`) and the
 
 Forks and pull requests are welcome, and so are reports of a difference from the game. We would rather the fixes end up in every Slay the Spire simulator than only in this one.
 
-- **Report a difference** in [latioswang/sts's issues](https://github.com/latioswang/sts/issues). Give the seed text, character, ascension and floor, what the game did and what the simulator did. A save file or a Communication Mod transcript helps most.
+- **Report a difference** in [this repository's issues](https://github.com/latioswang/sts_lightspeed/issues/new/choose). Give the seed text, character, ascension and floor, what the game did and what the simulator did. A save file or a Communication Mod transcript helps most. Build problems and questions go there too. Problems with the bridge, the recordings or the agent go to [latioswang/sts's issues](https://github.com/latioswang/sts/issues).
 - **Every change to behaviour needs evidence:** a seed where the real game shows it, or the game method that decides it. Add a row to the fix list in the same words as the others: what the simulator did, what the game does, and why.
 - **Run the replay test before and after** (see [USAGE.md](USAGE.md#check-a-change-against-1765-real-runs)). A fix should make runs get further, never shorter.
 - **Speed changes must not change results.** Check them with the replay test and the agent games.

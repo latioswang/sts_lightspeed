@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: The bridge, the recordings or the agent
+    url: https://github.com/latioswang/sts/issues
+    about: Mirror mode, live mode, the 1,765 recordings and the research agent live in latioswang/sts.

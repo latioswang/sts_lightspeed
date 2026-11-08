@@ -160,4 +160,4 @@ You need your own copy of Slay the Spire on Steam, with ModTheSpire, BaseMod and
 
 ## Contributing
 
-Forks and pull requests are welcome. See [Contributing](README.md#contributing) for what a change needs. In short: evidence from the game for every change in behaviour, a run of the replay test before and after, and no decompiled code.
+Forks and pull requests are welcome. Report a difference from the game, a build problem or a question in [the issues](https://github.com/latioswang/sts_lightspeed/issues/new/choose). See [Contributing](README.md#contributing) for what a change needs. In short: evidence from the game for every change in behaviour, a run of the replay test before and after, and no decompiled code.
