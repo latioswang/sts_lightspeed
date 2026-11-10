@@ -67,7 +67,7 @@ Known gaps, with details in the [fix list](https://github.com/latioswang/sts/blo
 - Silent, Defect and Watcher have had about 270 runs each on the real game, against 953 for Ironclad, so their rarer interactions have had fewer chances to show.
 - Stance isn't in Communication Mod's state, so it is only checked indirectly, through damage, energy and intents.
 - A potion reward with a full belt stays on screen in the game, where a player could discard a potion and take it. The simulator drops it.
-- A few rare interactions aren't fixed yet, such as Rampage under both Double Tap and Duplication, and some orders that are still fixed rather than the game's: start-of-turn relics, The Bomb among end-of-turn powers, and Strength and Dexterity, which sit outside the status map.
+- A few rare interactions aren't fixed yet, such as Rampage under both Double Tap and Duplication, and some orders that are still fixed rather than the game's: The Bomb among end-of-turn powers, and Strength and Dexterity, which sit outside the status map.
 - Runs recorded before 2026-11-06 had BaseMod's five gameplay fixes on. Two have shown up: the replay models the one that lifts the potion reward cap, and the one that gives an orb slot is a known failure. The other three haven't been compared.
 
 ## What changed from upstream
