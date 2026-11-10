@@ -811,6 +811,10 @@ void BattleContext::clearPostCombatActions() {
         }
         ++curIdx;
     }
+    // The kept actions now end at placeIdx. Without moving back here, the next pushBack wrote past a stale copy of a
+    // compacted action, and popFront later ran that copy a second time (e.g. a power card's OnAfterCardUsed after the
+    // card had been consumed, which moved an INVALID card to the discard pile).
+    actionQueue.back = placeIdx;
 }
 
 void BattleContext::cleanCardQueue() {

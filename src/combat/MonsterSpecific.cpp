@@ -3476,7 +3476,8 @@ int stasisHelper(Random &rng, ForwardIt begin, ForwardIt end) {
         return rng.random(groupSize-1);
     }
 
-    fixed_list<StasisPair, CardManager::MAX_GROUP_SIZE> idxList;
+    std::vector<StasisPair> idxList;  // a pile can hold more than MAX_GROUP_SIZE cards
+    idxList.reserve(static_cast<std::size_t>(end - begin));
 
     int i = 0;
     for (auto it = begin; it != end; ++it) {
@@ -3489,7 +3490,7 @@ int stasisHelper(Random &rng, ForwardIt begin, ForwardIt end) {
 
     std::stable_sort(idxList.begin(), idxList.end(), [](auto p1, auto p2) { return p1.idOrder < p2.idOrder; } );
 
-    const auto idxListSelectIdx = rng.random(idxList.size()-1);
+    const auto idxListSelectIdx = rng.random(static_cast<int>(idxList.size())-1);
     return idxList[idxListSelectIdx].groupIdx;
 }
 
