@@ -93,6 +93,7 @@ namespace sts {
 
         CardQueueItem curCardQueueItem;
 
+        fixed_list<RelicId, 16> turnStartRelics; // relics with an atTurnStart, in the order gained (filled at battle start)
         fixed_list<RelicId, 14> useCardRelics; // relics with an onUseCard, in the order gained (filled at battle start)
         std::bitset<32> miscBits; // 0 stolen gold check, 1 escaped, 2 Stone Calendar gained before Nilry's Codex, 3 Warped Tongs before Pocketwatch
 

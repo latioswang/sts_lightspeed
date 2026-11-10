@@ -132,6 +132,18 @@ void BattleContext::initRelics(const GameContext &gc) {
     // So do the turn's post-draw relics, and Warped Tongs picks from the hand before or after Pocketwatch's draw.
     miscBits.set(3, gainedBefore(R::WARPED_TONGS, R::POCKETWATCH));
 
+    // The relics with an atTurnStart, in the order gained, for Player::applyStartOfTurnRelics.
+    turnStartRelics.clear();
+    for (const auto &r : gc.relics.relics) {
+        switch (r.id) {
+            case R::ART_OF_WAR: case R::BRIMSTONE: case R::CAPTAINS_WHEEL: case R::DAMARU: case R::EMOTION_CHIP: case R::HAPPY_FLOWER: case R::HORN_CLEAT: case R::HOVERING_KITE: case R::INCENSE_BURNER: case R::INSERTER: case R::MERCURY_HOURGLASS: case R::NECRONOMICON: case R::ORANGE_PELLETS:
+                if (turnStartRelics.size() < 16) turnStartRelics.push_back(r.id);
+                break;
+            default:
+                break;
+        }
+    }
+
     // The relics with an onUseCard, in the order gained, for the card-use handlers.
     useCardRelics.clear();
     for (const auto &r : gc.relics.relics) {

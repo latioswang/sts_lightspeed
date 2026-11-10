@@ -762,82 +762,114 @@ void Player::applyAtEndOfRoundPowers() {
 }
 
 void Player::applyStartOfTurnRelics(BattleContext &bc) {
-    //****** Player relics atTurnStart ******
-    if (hasRelic<R::ART_OF_WAR>()) {
-        if (attacksPlayedThisTurn == 0) {
-            bc.addToBot(Actions::GainEnergy(1));
-        }
-    }
-
-    if (hasRelic<R::BRIMSTONE>()) {
-        buff<PS::STRENGTH>(2);
-        for (int i = 0; i < bc.monsters.monsterCount; i++) {
-            if (bc.monsters.arr[i].isTargetable()) {
-                bc.monsters.arr[i].buff<MS::STRENGTH>(1);
+    // AbstractPlayer.applyStartOfTurnRelics runs each relic's atTurnStart in the order the relics were gained.
+    for (const auto r : bc.turnStartRelics) {
+        switch (r) {
+            case R::ART_OF_WAR: {
+                if (true) {
+                    if (attacksPlayedThisTurn == 0) {
+                        bc.addToBot(Actions::GainEnergy(1));
+                    }
+                }
+                break;
             }
+            case R::BRIMSTONE: {
+                if (true) {
+                    buff<PS::STRENGTH>(2);
+                    for (int i = 0; i < bc.monsters.monsterCount; i++) {
+                        if (bc.monsters.arr[i].isTargetable()) {
+                            bc.monsters.arr[i].buff<MS::STRENGTH>(1);
+                        }
+                    }
+                }
+                break;
+            }
+            case R::CAPTAINS_WHEEL: {
+                if (true) {
+                    if (bc.turn == 2) {
+                        bc.addToBot( Actions::GainBlock(18) );
+                    }
+                }
+                break;
+            }
+            case R::DAMARU: {
+                if (true) {
+                    bc.queueMantra(1);
+                }
+                break;
+            }
+            case R::EMOTION_CHIP: {
+                if (true && emotionChipPulse) {
+                    emotionChipPulse = false;
+                    bc.addToBot( Actions::ImpulseAction() );
+                }
+                break;
+            }
+            case R::HAPPY_FLOWER: {
+                if (true) {
+                    if (++happyFlowerCounter == 3) {
+                        happyFlowerCounter = 0;
+                        bc.addToBot( Actions::GainEnergy(1) );
+                    }
+                }
+                break;
+            }
+            case R::HORN_CLEAT: {
+                if (true) {
+                    if (bc.turn == 1) {
+                        bc.addToBot( Actions::GainBlock(14) );
+                    }
+                }
+                break;
+            }
+            case R::HOVERING_KITE: {
+                if (true) {
+                    kiteTriggeredThisTurn = false;
+                }
+                break;
+            }
+            case R::INCENSE_BURNER: {
+                if (true) {
+                    if (++incenseBurnerCounter == 6) {
+                        incenseBurnerCounter = 0;
+                        bc.addToBot( Actions::BuffPlayer<PS::INTANGIBLE>(1) );
+                    }
+                }
+                break;
+            }
+            case R::INSERTER: {
+                if (true) {
+                    if (++inserterCounter == 2) {
+                        inserterCounter = 0; // todo
+                        bc.addToBot( {[=](BattleContext &bc) {
+                            bc.player.increaseOrbSlots(1);
+                        }});
+                    }
+                }
+                break;
+            }
+            case R::MERCURY_HOURGLASS: {
+                if (true) {
+                    bc.addToBot( Actions::DamageAllEnemy(3) );
+                }
+                break;
+            }
+            case R::NECRONOMICON: {
+                if (true) {
+                    haveUsedNecronomiconThisTurn = false;
+                }
+                break;
+            }
+            case R::ORANGE_PELLETS: {
+                if (true) {
+                    orangePelletsCardTypesPlayed.reset();
+                }
+                break;
+            }
+            default:
+                break;
         }
     }
-
-    if (hasRelic<R::CAPTAINS_WHEEL>()) {
-        if (bc.turn == 2) {
-            bc.addToBot( Actions::GainBlock(18) );
-        }
-    }
-
-    if (hasRelic<R::DAMARU>()) {
-        bc.queueMantra(1);
-    }
-
-    if (hasRelic<R::EMOTION_CHIP>() && emotionChipPulse) {
-        emotionChipPulse = false;
-        bc.addToBot( Actions::ImpulseAction() );
-    }
-
-    if (hasRelic<R::HAPPY_FLOWER>()) {
-        if (++happyFlowerCounter == 3) {
-            happyFlowerCounter = 0;
-            bc.addToBot( Actions::GainEnergy(1) );
-        }
-    }
-
-    if (hasRelic<R::HORN_CLEAT>()) {
-        if (bc.turn == 1) {
-            bc.addToBot( Actions::GainBlock(14) );
-        }
-    }
-
-    if (hasRelic<R::HOVERING_KITE>()) {
-        kiteTriggeredThisTurn = false;
-    }
-
-    if (hasRelic<R::INCENSE_BURNER>()) {
-        if (++incenseBurnerCounter == 6) {
-            incenseBurnerCounter = 0;
-            bc.addToBot( Actions::BuffPlayer<PS::INTANGIBLE>(1) );
-        }
-    }
-
-    if (hasRelic<R::INSERTER>()) {
-        if (++inserterCounter == 2) {
-            inserterCounter = 0; // todo
-            bc.addToBot( {[=](BattleContext &bc) {
-                bc.player.increaseOrbSlots(1);
-            }});
-        }
-    }
-
-    if (hasRelic<R::MERCURY_HOURGLASS>()) {
-        bc.addToBot( Actions::DamageAllEnemy(3) );
-    }
-
-    if (hasRelic<R::NECRONOMICON>()) {
-        haveUsedNecronomiconThisTurn = false;
-    }
-
-    if (hasRelic<R::ORANGE_PELLETS>()) {
-        orangePelletsCardTypesPlayed.reset();
-    }
-
 }
 
 void Player::applyStartOfTurnPowers(BattleContext &bc) {
