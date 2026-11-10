@@ -132,6 +132,20 @@ void BattleContext::initRelics(const GameContext &gc) {
     // So do the turn's post-draw relics, and Warped Tongs picks from the hand before or after Pocketwatch's draw.
     miscBits.set(3, gainedBefore(R::WARPED_TONGS, R::POCKETWATCH));
 
+    // The relics with an onUseCard, in the order gained, for the card-use handlers.
+    useCardRelics.clear();
+    for (const auto &r : gc.relics.relics) {
+        switch (r.id) {
+            case R::BIRD_FACED_URN: case R::BLUE_CANDLE: case R::DUALITY: case R::INK_BOTTLE: case R::KUNAI:
+            case R::LETTER_OPENER: case R::MEDICAL_KIT: case R::MUMMIFIED_HAND: case R::NECRONOMICON: case R::NUNCHAKU:
+            case R::ORANGE_PELLETS: case R::ORNAMENTAL_FAN: case R::PEN_NIB: case R::SHURIKEN:
+                if (useCardRelics.size() < 14) useCardRelics.push_back(r.id);
+                break;
+            default:
+                break;
+        }
+    }
+
     fixed_list<RelicId, 4> atBattleStartPreDraw;
     fixed_list<RelicId, 8> atBattleStart;
     fixed_list<RelicId, 2> atTurnStartPostDraw;
@@ -193,10 +207,10 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::ENCHIRIDION: {
-                const auto cardId = getTrulyRandomCardInCombat(cardRandomRng, p.cc, CardType::POWER);
-                CardInstance c(cardId);
-                c.setCostForTurn(0);
-                addToBot( Actions::MakeTempCardInHand(c) );
+                    const auto cardId = getTrulyRandomCardInCombat(cardRandomRng, p.cc, CardType::POWER);
+                    CardInstance c(cardId);
+                    c.setCostForTurn(0);
+                    addToBot( Actions::MakeTempCardInHand(c) );
                 break;
             }
 
@@ -323,13 +337,13 @@ void BattleContext::initRelics(const GameContext &gc) {
                 break;
 
             case R::DU_VU_DOLL: {
-                int curses = 0;
-                for (const auto &c : gc.deck.cards) {
-                    if (c.getType() == CardType::CURSE) {
-                        ++curses;
+                    int curses = 0;
+                    for (const auto &c : gc.deck.cards) {
+                        if (c.getType() == CardType::CURSE) {
+                            ++curses;
+                        }
                     }
-                }
-                p.buff<PS::STRENGTH>(curses);
+                    p.buff<PS::STRENGTH>(curses);
                 break;
             }
 
@@ -3027,63 +3041,88 @@ void BattleContext::onUseAttackCard() {
     }
 
     // ********* Relics onUseCard *********
-    // todo order of relics
 
-    if (p.hasRelic<R::INK_BOTTLE>()) {
-        p.inkBottleCounter++;
-        if (p.inkBottleCounter == 10) {
-            p.inkBottleCounter = 0;
-            addToBot( Actions::DrawCards(1) );
-        }
-    }
-
-    if (p.hasRelic<R::KUNAI>() && p.attacksPlayedThisTurn % 3 == 0) {
-        addToBot( Actions::BuffPlayer<PS::DEXTERITY>(1) );
-    }
-
-    if (p.hasRelic<R::ORANGE_PELLETS>()) {
-        p.orangePelletsCardTypesPlayed.set(static_cast<int>(CardType::ATTACK), true); // set bit 0 true
-        if (p.orangePelletsCardTypesPlayed.all()) {
-            p.orangePelletsCardTypesPlayed.reset();
-            addToBot(Actions::RemovePlayerDebuffs());
-        }
-    }
-
-    if (p.hasRelic<R::ORNAMENTAL_FAN>() && p.attacksPlayedThisTurn % 3 == 0) {
-        addToBot( Actions::GainBlock(4) );
-    }
-
-    if (p.hasRelic<R::SHURIKEN>() && p.attacksPlayedThisTurn % 3 == 0) {
-        addToBot( Actions::BuffPlayer<PS::STRENGTH>(1) );
-    }
-
-    if (p.hasRelic<R::NECRONOMICON>() && !p.haveUsedNecronomiconThisTurn &&
-        (c.costForTurn >= 2 && !c.freeToPlayOnce || c.isXCost() && item.energyOnUse >= 2)) {
-        // Unlike Double Tap's copy, this one isn't in limbo, so Rampage's ModifyDamageAction misses it.
-        CardInstance copy = c;
-        if (c.getId() == CardId::RAMPAGE && !item.purgeOnUse) {
-            copy.specialData = static_cast<std::int16_t>(copy.specialData - (c.isUpgraded() ? 8 : 5));
-        }
-        queuePurgeCard(copy, item.target);
-        p.haveUsedNecronomiconThisTurn = true;
-    }
-
-    if (p.hasRelic<R::PEN_NIB>()) {
-        ++p.penNibCounter;
-        if (p.penNibCounter == 9) {
-            addToBot( Actions::BuffPlayer<PS::PEN_NIB>(1) );
-            p.penNibCounter = -1; // take note of this
-        }
-    }
-
-    if (p.hasRelic<R::DUALITY>()) {
-        addToBot(Actions::DualityAction());
-    }
-
-    if (p.hasRelic<R::NUNCHAKU>()) {
-        if (++p.nunchakuCounter >= 10) {
-            addToBot(Actions::GainEnergy(1));
-            p.nunchakuCounter = 0;
+    // UseCardAction runs each relic's onUseCard in the order the relics were gained (AbstractPlayer.relics).
+    for (const auto r : useCardRelics) {
+        switch (r) {
+            case R::INK_BOTTLE: {
+                if (true) {
+                    p.inkBottleCounter++;
+                    if (p.inkBottleCounter == 10) {
+                        p.inkBottleCounter = 0;
+                        addToBot( Actions::DrawCards(1) );
+                    }
+                }
+                break;
+            }
+            case R::KUNAI: {
+                if (true && p.attacksPlayedThisTurn % 3 == 0) {
+                    addToBot( Actions::BuffPlayer<PS::DEXTERITY>(1) );
+                }
+                break;
+            }
+            case R::ORANGE_PELLETS: {
+                if (true) {
+                    p.orangePelletsCardTypesPlayed.set(static_cast<int>(CardType::ATTACK), true); // set bit 0 true
+                    if (p.orangePelletsCardTypesPlayed.all()) {
+                        p.orangePelletsCardTypesPlayed.reset();
+                        addToBot(Actions::RemovePlayerDebuffs());
+                    }
+                }
+                break;
+            }
+            case R::ORNAMENTAL_FAN: {
+                if (true && p.attacksPlayedThisTurn % 3 == 0) {
+                    addToBot( Actions::GainBlock(4) );
+                }
+                break;
+            }
+            case R::SHURIKEN: {
+                if (true && p.attacksPlayedThisTurn % 3 == 0) {
+                    addToBot( Actions::BuffPlayer<PS::STRENGTH>(1) );
+                }
+                break;
+            }
+            case R::NECRONOMICON: {
+                if (true && !p.haveUsedNecronomiconThisTurn &&
+                    (c.costForTurn >= 2 && !c.freeToPlayOnce || c.isXCost() && item.energyOnUse >= 2)) {
+                    // Unlike Double Tap's copy, this one isn't in limbo, so Rampage's ModifyDamageAction misses it.
+                    CardInstance copy = c;
+                    if (c.getId() == CardId::RAMPAGE && !item.purgeOnUse) {
+                        copy.specialData = static_cast<std::int16_t>(copy.specialData - (c.isUpgraded() ? 8 : 5));
+                    }
+                    queuePurgeCard(copy, item.target);
+                    p.haveUsedNecronomiconThisTurn = true;
+                }
+                break;
+            }
+            case R::PEN_NIB: {
+                if (true) {
+                    ++p.penNibCounter;
+                    if (p.penNibCounter == 9) {
+                        addToBot( Actions::BuffPlayer<PS::PEN_NIB>(1) );
+                        p.penNibCounter = -1; // take note of this
+                    }
+                }
+                break;
+            }
+            case R::DUALITY: {
+                if (true) {
+                    addToBot(Actions::DualityAction());
+                }
+                break;
+            }
+            case R::NUNCHAKU: {
+                if (true) {
+                    if (++p.nunchakuCounter >= 10) {
+                        addToBot(Actions::GainEnergy(1));
+                        p.nunchakuCounter = 0;
+                    }
+                }
+                break;
+            }
+            default:
+                break;
         }
     }
 
@@ -3150,32 +3189,47 @@ void BattleContext::onUseSkillCard() {
     // todo BirdFacedUrn
 
     // ********* Relics onUseCard *********
-    // todo ink bottle/ ornamental fan need to be ordered i believe
 
-    if (p.hasRelic<R::INK_BOTTLE>()) {
-        p.inkBottleCounter++;
-        if (p.inkBottleCounter == 10) {
-            p.inkBottleCounter = 0;
-            addToBot( Actions::DrawCards(1) );
+    // UseCardAction runs each relic's onUseCard in the order the relics were gained (AbstractPlayer.relics).
+    for (const auto r : useCardRelics) {
+        switch (r) {
+            case R::INK_BOTTLE: {
+                if (true) {
+                    p.inkBottleCounter++;
+                    if (p.inkBottleCounter == 10) {
+                        p.inkBottleCounter = 0;
+                        addToBot( Actions::DrawCards(1) );
+                    }
+                }
+                break;
+            }
+            case R::ORANGE_PELLETS: {
+                if (true) {
+                    p.orangePelletsCardTypesPlayed.set(static_cast<int>(CardType::SKILL), true); // set bit 0 true
+                    if (p.orangePelletsCardTypesPlayed.all()) {
+                        p.orangePelletsCardTypesPlayed.reset();
+                        addToBot(Actions::RemovePlayerDebuffs());
+                    }
+                }
+                break;
+            }
+            case R::LETTER_OPENER: {
+                if (true) {
+                    if (p.skillsPlayedThisTurn >= 3 &&  p.skillsPlayedThisTurn % 3 == 0) {
+                        addToBot(Actions::DamageAllEnemy(5));
+                    }
+                }
+                break;
+            }
+            case R::MUMMIFIED_HAND: {
+                if (true) {
+                    // todo
+                }
+                break;
+            }
+            default:
+                break;
         }
-    }
-
-    if (p.hasRelic<R::ORANGE_PELLETS>()) {
-        p.orangePelletsCardTypesPlayed.set(static_cast<int>(CardType::SKILL), true); // set bit 0 true
-        if (p.orangePelletsCardTypesPlayed.all()) {
-            p.orangePelletsCardTypesPlayed.reset();
-            addToBot(Actions::RemovePlayerDebuffs());
-        }
-    }
-
-    if (p.hasRelic<R::LETTER_OPENER>()) {
-        if (p.skillsPlayedThisTurn >= 3 &&  p.skillsPlayedThisTurn % 3 == 0) {
-            addToBot(Actions::DamageAllEnemy(5));
-        }
-    }
-
-    if (p.hasRelic<R::MUMMIFIED_HAND>()) {
-        // todo
     }
 
     /*
@@ -3272,28 +3326,44 @@ void BattleContext::onUsePowerCard() {
 
     // ********* Relics onUseCard *********
 
-    if (p.hasRelic<R::BIRD_FACED_URN>()) {
-        p.heal(2);
-    }
-
-    if (p.hasRelic<R::INK_BOTTLE>()) {
-        p.inkBottleCounter++;
-        if (p.inkBottleCounter == 10) {
-            p.inkBottleCounter = 0;
-            addToBot( Actions::DrawCards(1) );
+    // UseCardAction runs each relic's onUseCard in the order the relics were gained (AbstractPlayer.relics).
+    for (const auto r : useCardRelics) {
+        switch (r) {
+            case R::BIRD_FACED_URN: {
+                if (true) {
+                    p.heal(2);
+                }
+                break;
+            }
+            case R::INK_BOTTLE: {
+                if (true) {
+                    p.inkBottleCounter++;
+                    if (p.inkBottleCounter == 10) {
+                        p.inkBottleCounter = 0;
+                        addToBot( Actions::DrawCards(1) );
+                    }
+                }
+                break;
+            }
+            case R::ORANGE_PELLETS: {
+                if (true) {
+                    p.orangePelletsCardTypesPlayed.set(static_cast<int>(CardType::POWER), true); // set bit 0 true
+                    if (p.orangePelletsCardTypesPlayed.all()) {
+                        p.orangePelletsCardTypesPlayed.reset();
+                        addToBot(Actions::RemovePlayerDebuffs());
+                    }
+                }
+                break;
+            }
+            case R::MUMMIFIED_HAND: {
+                if (true) {
+                    mummifiedHandOnUsePower();
+                }
+                break;
+            }
+            default:
+                break;
         }
-    }
-
-    if (p.hasRelic<R::ORANGE_PELLETS>()) {
-        p.orangePelletsCardTypesPlayed.set(static_cast<int>(CardType::POWER), true); // set bit 0 true
-        if (p.orangePelletsCardTypesPlayed.all()) {
-            p.orangePelletsCardTypesPlayed.reset();
-            addToBot(Actions::RemovePlayerDebuffs());
-        }
-    }
-
-    if (p.hasRelic<R::MUMMIFIED_HAND>()) {
-        mummifiedHandOnUsePower();
     }
 
     for (int i = 0; i < monsters.monsterCount; ++i) {
@@ -3336,23 +3406,32 @@ void BattleContext::onUseStatusOrCurseCard() {
         addToBot( Actions::DamageAllEnemy(p.getStatus<PS::PANACHE>()) );
     }
 
-    if (c.getType() == CardType::CURSE) {
-        if (p.hasRelic<R::BLUE_CANDLE>()) {
-            addToBot( Actions::PlayerLoseHp(1, true) );
-            item.exhaustOnUse = true;
-        }
+    // UseCardAction runs each relic's onUseCard in the order the relics were gained (AbstractPlayer.relics).
+    for (const auto r : useCardRelics) {
+        switch (r) {
+            case R::BLUE_CANDLE:
+                if (c.getType() == CardType::CURSE) {
+                    addToBot( Actions::PlayerLoseHp(1, true) );
+                    item.exhaustOnUse = true;
+                }
+                break;
 
-    } else if (c.getType() == CardType::STATUS) {
-        if (p.hasRelic<R::MEDICAL_KIT>()) {
-            item.exhaustOnUse = true;
-        }
-    }
+            case R::MEDICAL_KIT:
+                if (c.getType() == CardType::STATUS) {
+                    item.exhaustOnUse = true;
+                }
+                break;
 
-    if (p.hasRelic<R::INK_BOTTLE>()) {
-        p.inkBottleCounter++;
-        if (p.inkBottleCounter == 10) {
-            p.inkBottleCounter = 0;
-            addToBot( Actions::DrawCards(1) );
+            case R::INK_BOTTLE:
+                p.inkBottleCounter++;
+                if (p.inkBottleCounter == 10) {
+                    p.inkBottleCounter = 0;
+                    addToBot( Actions::DrawCards(1) );
+                }
+                break;
+
+            default:
+                break;
         }
     }
 

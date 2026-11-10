@@ -93,6 +93,7 @@ namespace sts {
 
         CardQueueItem curCardQueueItem;
 
+        fixed_list<RelicId, 14> useCardRelics; // relics with an onUseCard, in the order gained (filled at battle start)
         std::bitset<32> miscBits; // 0 stolen gold check, 1 escaped, 2 Stone Calendar gained before Nilry's Codex, 3 Warped Tongs before Pocketwatch
 
         // Lesson Learned upgrades a random card in the master deck. These are filled in only if the deck holds one.
